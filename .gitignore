@@ -2,3 +2,9 @@
 node_modules/
 .DS_Store
 Thumbs.db
+
+# Données réelles de la FI : jamais dans le dépôt public
+private/
+# Builds des applications
+apps/*/node_modules/
+apps/*/dist/

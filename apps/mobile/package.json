@@ -1,0 +1,21 @@
+{
+  "name": "fi-espace-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FI espace — application mobile (Android et iPhone) avec Capacitor",
+  "scripts": {
+    "web": "node ../../scripts/copy-web.mjs www",
+    "icons": "capacitor-assets generate --iconBackgroundColor \"#0c3a2c\" --iconBackgroundColorDark \"#0c3a2c\" --splashBackgroundColor \"#0c3a2c\" --splashBackgroundColorDark \"#0c3a2c\"",
+    "android": "npm run web && npx cap add android && npm run icons -- --android && npx cap sync android",
+    "ios": "npm run web && npx cap add ios && npm run icons -- --ios && npx cap sync ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "6.2.0",
+    "@capacitor/core": "6.2.0",
+    "@capacitor/ios": "6.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "6.2.0"
+  }
+}

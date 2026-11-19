@@ -1,0 +1,62 @@
+{
+  "name": "fi-espace-desktop",
+  "productName": "FI espace",
+  "version": "1.0.0",
+  "description": "FI espace — coordination de la FI (application de bureau)",
+  "main": "main.js",
+  "private": true,
+  "author": {
+    "name": "FI espace",
+    "email": "fi-espace@users.noreply.github.com"
+  },
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "io.github.chrisgit28.fiespace",
+    "productName": "FI espace",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "offline.html",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "FI-espace-${version}-windows.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "FI espace"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity",
+      "artifactName": "FI-espace-${version}-mac.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "maintainer": "FI espace <fi-espace@users.noreply.github.com>",
+      "artifactName": "FI-espace-${version}-linux.${ext}"
+    }
+  },
+  "homepage": "https://chris-git28.github.io/fi-espace/"
+}

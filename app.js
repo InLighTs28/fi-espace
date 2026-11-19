@@ -114,6 +114,11 @@
   const forceDemo = new URLSearchParams(location.search).has('demo');
   const configured = Boolean(cfg.supabaseUrl && cfg.supabaseAnonKey);
   const LIVE = configured && !forceDemo;
+  // Mode local : données réelles lues depuis private/donnees-fi.js (fichier exclu de Git), uniquement
+  // quand l'application est ouverte depuis cet ordinateur. Les modifications sont gardées dans le navigateur local.
+  let LOCAL = false;
+  const LOCAL_KEY = 'fi.local.v1';
+  const isLocalHost = () => location.protocol === 'file:' || ['localhost', '127.0.0.1'].includes(location.hostname);
 
   // Paramètres des liens e-mail (invitation, réinitialisation), lus avant que supabase-js ne nettoie l'URL.
   const hashParams = new URLSearchParams(location.hash.slice(1));
@@ -222,7 +227,45 @@
       ['Mettre à jour la liste de présence', 'demo-marie', day(-2), 'done'],
       ['Vérifier le matériel de réunion', 'demo-hugo', day(-2), 'done'],
     ].map(([title, assigned_to, due_at, status], i) => ({ id: `dt${i}`, title, description: null, assigned_to, due_at, status }));
-    return { roles, people, members, events, participants: { de2: ['dm0', 'dm4'] }, attendance, followups, tasks, photos: {}, prefs: {} };
+    return { orgName: 'FI de démonstration', defaultUser: 'demo-marie', roles, people, members, events, participants: { de2: ['dm0', 'dm4'] }, attendance, followups, tasks, photos: {}, prefs: {} };
+  }
+
+  // Transforme le fichier privé (format simple, par noms) en données de l'application.
+  function buildLocal(data) {
+    const roles = buildDemo().roles;
+    const roleId = { admin: 'r-admin', fi_leader: 'r-leader', deputy: 'r-deputy', member: 'r-member' };
+    const slug = s => `l-${norm(s).replace(/[^a-z0-9]+/g, '-')}`;
+    const members = (data.members || []).map(m => ({ id: slug(m.name), display_name: m.name, status: m.status || 'active', availability: m.availability || null, tutor_user_id: null, user_id: null }));
+    const people = (data.accounts || []).map(a => ({
+      user_id: `u${slug(a.name)}`, display_name: a.name, email: a.email || '',
+      role_ids: (a.roles || ['member']).map(r => roleId[r]).filter(Boolean), member_id: a.member ? slug(a.member) : null, active: true,
+    }));
+    people.forEach(p => { const m = members.find(x => x.id === p.member_id); if (m) m.user_id = p.user_id; });
+    const uid = name => (name ? people.find(p => norm(p.display_name) === norm(name))?.user_id || null : null);
+    (data.members || []).forEach((m, i) => { members[i].tutor_user_id = uid(m.tutor); });
+    const at = (d, t) => new Date(`${d}T${t || '19:00'}`).toISOString();
+    return {
+      version: data.version || 1, orgName: data.orgName || 'FI', defaultUser: uid(data.me) || people[0]?.user_id,
+      roles, people, members, participants: {}, attendance: [], photos: {}, prefs: {},
+      events: (data.events || []).map((e, i) => ({ id: `le${i}`, title: e.title, starts_at: at(e.date, e.time), ends_at: null, location: e.location || null, notes: e.notes || null, audience: e.audience || 'all' })),
+      followups: (data.followups || []).map((f, i) => ({ id: `lf${i}`, contact_label: f.contact, next_action: f.action, owner_user_id: uid(f.owner), due_at: f.due || null, status: f.status || 'open' })),
+      tasks: (data.tasks || []).map((t, i) => ({ id: `lt${i}`, title: t.title, description: t.description || null, assigned_to: uid(t.owner), due_at: t.due || null, status: t.status || 'todo' })),
+    };
+  }
+
+  function loadLocalData() {
+    return new Promise(resolve => {
+      if (!isLocalHost()) { resolve(); return; } // jamais sur le site public
+      const s = document.createElement('script');
+      s.src = 'private/donnees-fi.js';
+      s.onload = s.onerror = () => resolve();
+      document.head.appendChild(s);
+    });
+  }
+
+  function saveLocal() {
+    if (!LOCAL || !demo) return;
+    try { localStorage.setItem(LOCAL_KEY, JSON.stringify(demo)); } catch { toast('Sauvegarde locale impossible (espace du navigateur plein ?).'); }
   }
 
   function demoPermsOf(person) {
@@ -232,12 +275,18 @@
     return set;
   }
 
-  function setDemoAccount(key) {
-    state.userId = DEMO_USERS[key];
-    const me = demo.people.find(p => p.user_id === state.userId);
+  function setDemoAccount(userId) {
+    const me = demo.people.find(p => p.user_id === userId) || demo.people.find(p => p.active);
+    state.userId = me.user_id;
     state.displayName = me.display_name;
-    state.email = me.email;
-    state.orgName = 'FI de démonstration';
+    state.email = me.email || '';
+    state.orgName = demo.orgName || 'FI de démonstration';
+  }
+
+  function renderDemoSelector() {
+    const label = p => demo.roles.filter(r => p.role_ids.includes(r.id)).sort((a, b) => b.position - a.position)[0]?.name || 'Sans rôle';
+    $('#role').innerHTML = demo.people.filter(p => p.active)
+      .map(p => `<option value="${esc(p.user_id)}" ${p.user_id === state.userId ? 'selected' : ''}>${esc(p.display_name)} (${esc(label(p))})</option>`).join('');
   }
 
   // Reproduit en mémoire ce que la base (RLS) laisse lire à ce compte.
@@ -558,6 +607,7 @@
     } catch (err) {
       toast(friendlyError(err));
     }
+    if (!LIVE) { saveLocal(); renderDemoSelector(); }
     renderAll();
   }
 
@@ -642,7 +692,7 @@
     $('#dashEyebrow').textContent = `${cap(now.toLocaleDateString('fr-FR', { weekday: 'long' }))} · ${memberSpace ? 'Espace membre' : 'Espace de coordination'}`;
     $('#hello').textContent = `Bonjour, ${(state.displayName || '').split(' ')[0] || 'bienvenue'}`;
     $('#dashSub').firstChild.textContent = memberSpace ? 'Voici les événements qui vous concernent.' : 'Voici les repères de votre FI cette semaine.';
-    $('#todayBadge').textContent = LIVE ? state.orgName : 'Données de démonstration';
+    $('#todayBadge').textContent = LIVE ? state.orgName : LOCAL ? `${state.orgName} · sur cet ordinateur` : 'Données de démonstration';
 
     const openTasks = state.tasks.filter(t => t.status !== 'done');
     const weekEnd = isoDate(new Date(Date.now() + 7 * 864e5));
@@ -698,7 +748,7 @@
       const present = recs.filter(a => a.state === 'present').length;
       const tagClass = m.status === 'active' ? 'green' : m.status === 'to_contact' ? 'orange' : '';
       const account = m.user_id ? '<span class="tag aud-invite" title="Peut se connecter à l’espace membre">compte</span>' : '';
-      return `<tr><td><div class="person">${avatar(m.display_name, m.id)}<div>${esc(m.display_name)} ${account}${LIVE ? '' : '<small>Données de démonstration</small>'}</div></div></td>`
+      return `<tr><td><div class="person">${avatar(m.display_name, m.id)}<div>${esc(m.display_name)} ${account}${LIVE || LOCAL ? '' : '<small>Données de démonstration</small>'}</div></div></td>`
         + `<td>${esc(m.availability || '—')}</td><td><span class="tag ${tagClass}">${esc(MEMBER_STATUS[m.status] || m.status)}</span></td>`
         + `<td>${recs.length ? `${present} / ${recs.length}` : '—'}</td><td>${esc(m.tutor_user_id ? personName(m.tutor_user_id) : '—')}</td>`
         + `<td><button class="row-btn" data-perm="manage_members" data-edit-member="${esc(m.id)}">Modifier</button></td></tr>`;
@@ -894,7 +944,7 @@
   function renderAccount() {
     const chips = rolesOf(state.myRoleIds).map(roleChip).join('') || '<span class="role-chip">Aucun rôle</span>';
     $('#accountCard').innerHTML = `<div class="account-id">${avatar(state.displayName || '?', state.myMemberId, 'big')}<div><b>${esc(state.displayName || '—')}</b><small>${esc(state.email || '')}</small><div class="chips" style="margin-top:8px">${chips}</div></div></div>`
-      + `<div class="notice" style="margin-top:14px">Connexion par adresse e-mail et mot de passe. ${LIVE ? `FI : <b>${esc(state.orgName)}</b>.` : 'En démonstration, aucun e-mail n’est envoyé.'}</div>`;
+      + `<div class="notice" style="margin-top:14px">Connexion par adresse e-mail et mot de passe. ${LIVE ? `FI : <b>${esc(state.orgName)}</b>.` : LOCAL ? 'Données locales : enregistrées uniquement sur cet ordinateur, aucun e-mail n’est envoyé.' : 'En démonstration, aucun e-mail n’est envoyé.'}</div>`;
     $$('#prefsForm input[type=checkbox]').forEach(cb => { cb.checked = Boolean(state.prefs[cb.name]); });
   }
 
@@ -1494,16 +1544,35 @@
     await enterApp();
   }
 
-  function bootDemo() {
-    demo = buildDemo();
-    setDemoAccount('fi_leader');
-    $('#role').value = 'fi_leader';
+  async function bootDemo() {
+    await loadLocalData();
+    if (window.FI_LOCAL_DATA) {
+      LOCAL = true;
+      document.body.classList.add('local-data');
+      let stored = null;
+      try { stored = JSON.parse(safeGet(LOCAL_KEY) || 'null'); } catch { stored = null; }
+      demo = stored && stored.version === (window.FI_LOCAL_DATA.version || 1) && stored.people ? stored : buildLocal(window.FI_LOCAL_DATA);
+    } else {
+      demo = buildDemo();
+    }
+    setDemoAccount(demo.defaultUser);
     $('#role').onchange = e => {
       setDemoAccount(e.target.value);
       refresh();
-      toast(`Aperçu : vous êtes ${state.displayName} (${e.target.selectedOptions[0].textContent}).`);
+      toast(`Vous êtes maintenant : ${e.target.selectedOptions[0].textContent}.`);
     };
-    refresh().then(() => document.body.classList.remove('booting'));
+    $('#resetLocal').onclick = () => {
+      if (!confirm('Revenir aux données du fichier privé ? Les modifications faites dans l’application seront perdues.')) return;
+      try { localStorage.removeItem(LOCAL_KEY); } catch { /* rien à effacer */ }
+      location.reload();
+    };
+    await refresh();
+    document.body.classList.remove('booting');
+  }
+
+  // Application installable (PWA) : uniquement sur le site en HTTPS.
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* hors ligne non disponible */ });
   }
 
   addSparks($('.welcome'), 14);

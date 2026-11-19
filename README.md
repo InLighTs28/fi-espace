@@ -147,6 +147,46 @@ window.FI_CONFIG = {
 ### 7. Héberger
 Site statique, publié ici sur GitHub Pages (`https://chris-git28.github.io/fi-espace/`) : chaque `git push` sur `main` met le site à jour. Pour un domaine personnalisé : Settings → Pages → Custom domain, puis reporter l’adresse dans Supabase et les secrets.
 
+## Applications
+
+| Plateforme | Le plus simple (gratuit, tout de suite) | Version « store » |
+|---|---|---|
+| Windows | Ouvrir le site dans Edge ou Chrome → menu ⋯ → **Installer FI espace** | Installateur `.exe` (Releases GitHub) → Microsoft Store |
+| macOS | Chrome : ⋯ → Installer ; Safari : Fichier → **Ajouter au Dock** | `.dmg` (Releases) → Mac App Store |
+| Linux | Chrome/Edge : Installer | `.AppImage` / `.deb` (Releases) → Flathub ou Snap Store |
+| Android | Chrome : ⋮ → **Installer l’application** | `.apk` (Releases) → Google Play |
+| iPhone / iPad | Safari : Partager → **Sur l’écran d’accueil** | Projet Xcode (Mac requis) → App Store |
+
+Le site est une **application installable (PWA)** : icône, fenêtre propre, ouverture hors connexion (`manifest.webmanifest`, `sw.js`, dossier `icons/`).
+
+### Raccourci « FI espace » sur le Bureau (cet ordinateur)
+Le raccourci ouvre la version locale du dossier dans une fenêtre dédiée (Edge en mode application). Elle lit le fichier **`private/donnees-fi.js`** : les membres réels du compte rendu. Ce dossier est **exclu de Git** et n’est jamais publié. Les modifications faites dans cette version restent sur cet ordinateur. Le bouton « Recharger depuis le fichier privé » se trouve dans Mon compte. Une fois Supabase en place, la base remplace ce fichier.
+
+### Construire les applications (automatique)
+Le workflow `.github/workflows/apps.yml` construit à chaque étiquette `vX.Y.Z` :
+- **Windows / macOS / Linux** : `apps/desktop` (Electron). Ouvre le site en ligne dans sa propre fenêtre et reçoit donc les mises à jour sans réinstaller.
+- **Android** : `apps/mobile` (Capacitor) embarque une copie du site (`scripts/copy-web.mjs`, sans `private/`).
+
+Les fichiers sont joints à une **Release GitHub**. Pour publier une nouvelle version : `git tag v1.0.1 && git push --tags`.
+
+Ces versions ne sont **pas signées**. Windows (SmartScreen) affiche alors « Informations complémentaires → Exécuter quand même », et macOS « clic droit → Ouvrir ».
+
+### Publier sur les stores
+La publication demande **vos** comptes développeur ; je ne peux ni les créer ni payer à votre place.
+
+| Store | Compte | Ce qu’il faut faire |
+|---|---|---|
+| Google Play | Google Play Console (25 $ une fois) | Créer une clé de signature, compiler un `.aab` signé (`./gradlew bundleRelease`), fiche, captures, politique de confidentialité |
+| App Store (iPhone) et Mac App Store | Apple Developer Program (99 $/an) + un Mac avec Xcode | `cd apps/mobile && npm install && npm run ios`, ouvrir `ios/App` dans Xcode, signer, archiver, envoyer |
+| Microsoft Store | Microsoft Partner Center (compte particulier) | Plus simple : [PWABuilder](https://www.pwabuilder.com) avec l’adresse du site génère le paquet MSIX |
+| Linux | Aucun obligatoire | Les fichiers de la Release suffisent ; Flathub et Snap Store sont facultatifs |
+
+Pour signer les versions de bureau (sans avertissement) : un certificat de signature de code Windows et l’Apple Developer Program pour la notarisation macOS.
+
+Apple peut refuser une application qui se contente d’afficher un site (règle 4.2). Pour iPhone, la version **installée depuis Safari** est donc souvent la meilleure option.
+
+Pour les applications, ajouter aux origines autorisées des fonctions serveur : `ALLOWED_ORIGINS=…,https://localhost,capacitor://localhost`.
+
 ## Parcours des comptes
 
 - **Invitation** : l’administrateur saisit le nom (les membres existants sont proposés), l’e-mail, les rôles et, pour un membre, sa fiche. La personne reçoit un lien, choisit son mot de passe (10 caractères minimum) et arrive dans son espace.

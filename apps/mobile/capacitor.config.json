@@ -1,0 +1,8 @@
+{
+  "appId": "io.github.chrisgit28.fiespace",
+  "appName": "FI espace",
+  "webDir": "www",
+  "backgroundColor": "#f4efe2",
+  "android": { "allowMixedContent": false },
+  "ios": { "contentInset": "always" }
+}

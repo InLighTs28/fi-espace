@@ -1,5 +1,6 @@
 // FI espace — Edge Function « invite-user ».
-// Invite un responsable par e-mail et lui attribue un rôle dans une organisation.
+// Invite une personne par e-mail (responsable, adjoint ou membre), lui attribue un ou plusieurs rôles
+// de l'organisation et, si demandé, relie le compte à une fiche membre (accès « espace membre »).
 //
 // Sécurité :
 // - La clé service_role n'existe QUE ici, dans l'environnement serveur de Supabase
@@ -19,7 +20,6 @@ const SITE_URL = Deno.env.get("SITE_URL") ?? "";
 const ALLOWED = (Deno.env.get("ALLOWED_ORIGINS") ?? SITE_URL)
   .split(",").map((s) => s.trim().replace(/\/$/, "")).filter(Boolean);
 
-const ROLES = new Set(["admin", "fi_leader", "deputy"]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -50,10 +50,12 @@ Deno.serve(async (req) => {
   const organizationId = String(body.organization_id ?? "");
   const email = String(body.email ?? "").trim().toLowerCase();
   const displayName = String(body.display_name ?? "").trim().slice(0, 80);
-  const role = String(body.role ?? "");
+  const roleIds = Array.isArray(body.role_ids) ? [...new Set(body.role_ids.map(String))] : [];
+  const memberId = body.member_id ? String(body.member_id) : null;
   if (!UUID_RE.test(organizationId)) return reply(400, { error: "Organisation invalide" });
   if (!EMAIL_RE.test(email) || email.length > 254) return reply(400, { error: "Adresse e-mail invalide" });
-  if (!ROLES.has(role)) return reply(400, { error: "Rôle invalide" });
+  if (!roleIds.length || roleIds.length > 20 || !roleIds.every((id) => UUID_RE.test(id))) return reply(400, { error: "Choisissez au moins un rôle" });
+  if (memberId && !UUID_RE.test(memberId)) return reply(400, { error: "Membre invalide" });
   if (!displayName) return reply(400, { error: "Nom affiché requis" });
 
   // 1) Qui appelle ? (client « utilisateur » : soumis à la RLS)
@@ -71,6 +73,15 @@ Deno.serve(async (req) => {
 
   // 3) Invitation (client « service » : uniquement après la vérification ci-dessus)
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+
+  // Les rôles (et le membre éventuel) doivent appartenir à cette organisation.
+  const { data: roles } = await admin.from("org_roles").select("id").eq("organization_id", organizationId).in("id", roleIds);
+  if ((roles ?? []).length !== roleIds.length) return reply(400, { error: "Rôle inconnu dans cette FI" });
+  if (memberId) {
+    const { data: member } = await admin.from("fi_members").select("id,user_id").eq("organization_id", organizationId).eq("id", memberId).maybeSingle();
+    if (!member) return reply(400, { error: "Membre introuvable dans cette FI" });
+    if (member.user_id) return reply(409, { error: "Ce membre a déjà un compte" });
+  }
 
   let userId: string | null = null;
   let outcome: "invited" | "existing" = "invited";
@@ -97,16 +108,27 @@ Deno.serve(async (req) => {
   }
   if (userId === who.user.id) return reply(400, { error: "Vous ne pouvez pas modifier votre propre rôle par invitation" });
 
-  const { error: roleErr } = await admin.from("user_roles").upsert({
+  const { error: memberErr } = await admin.from("user_roles").upsert({
     user_id: userId,
     organization_id: organizationId,
-    role,
     active: true,
     display_name: displayName,
     email,
     invited_by: who.user.id,
   }, { onConflict: "user_id,organization_id" });
-  if (roleErr) return reply(500, { error: "Attribution du rôle impossible" });
+  if (memberErr) return reply(500, { error: "Création de l'accès impossible" });
+
+  const { error: roleErr } = await admin.from("account_roles").upsert(
+    roleIds.map((role_id) => ({ user_id: userId, organization_id: organizationId, role_id })),
+    { onConflict: "user_id,role_id", ignoreDuplicates: true },
+  );
+  if (roleErr) return reply(500, { error: "Attribution des rôles impossible" });
+
+  if (memberId) {
+    const { error: linkErr } = await admin.from("fi_members").update({ user_id: userId })
+      .eq("organization_id", organizationId).eq("id", memberId).is("user_id", null);
+    if (linkErr) return reply(500, { error: "Lien avec la fiche membre impossible" });
+  }
 
   return reply(200, { status: outcome, user_id: userId });
 });

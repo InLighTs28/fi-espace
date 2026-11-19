@@ -1,143 +1,168 @@
 # FI espace — application de coordination
 
-Application web responsive pour la coordination d’une FI, réservée aux responsables. Direction artistique chrétienne sobre (vert profond, ivoire, doré, croix discrète, citation courte) avec des animations légères, désactivées si le système demande de réduire les animations.
+Application web responsive pour la coordination d’une FI : responsables, adjoints et membres. Direction artistique chrétienne (vert profond, ivoire, doré, croix discrète, citation courte), animations désactivées si le système demande de réduire les animations.
 
 ## Deux modes de fonctionnement
 
 | Mode | Quand | Données | Sécurité |
 |---|---|---|---|
-| **Démonstration** | `config.js` vide, ou `?demo` ajouté à l’URL | Fictives, en mémoire, perdues au rechargement | Aucune : le sélecteur de rôle n’est qu’un aperçu |
-| **Connecté** | `config.js` rempli avec l’URL et la clé publique Supabase | Base PostgreSQL Supabase | Connexion obligatoire, droits vérifiés par la base (RLS) à chaque requête |
+| **Démonstration** | `config.js` vide, ou `?demo` ajouté à l’URL | Fictives, en mémoire, perdues au rechargement | Aucune : le sélecteur en haut permet d’essayer chaque compte (admin, responsable, adjoint, membre) |
+| **Connecté** | `config.js` rempli avec l’URL et la clé publique Supabase | Base PostgreSQL Supabase | Connexion e-mail + mot de passe, droits vérifiés par la base (RLS) à chaque requête |
 
 Toutes les personnes, dates et statistiques du mode démonstration sont **inventées**.
 
 ## Fichiers
 
 ```
-index.html                         Interface (structure + styles de base)
-theme.css                          Direction artistique, animations, mobile, écran de connexion
-app.js                             Logique : authentification, chargement des données, formulaires
-config.example.js                  Modèle de configuration publique (à copier en config.js)
-config.js                          Configuration active (vide = mode démonstration)
-database/001_schema.sql            Tables, rôles, politiques RLS par organisation et par rôle
-database/002_auth_invitations.sql  Comptes invités, annuaire interne, intégrité, durcissement
-database/tests/rls_checks.sql      Vérification automatique des droits de chaque rôle (annulée en fin d’exécution)
-supabase/functions/invite-user/    Fonction serveur d’invitation (seul endroit utilisant la clé secrète)
+index.html, theme.css, app.js      Le site (statique)
+config.example.js / config.js      Configuration publique (config.js vide = démonstration)
+database/001_schema.sql            Tables de base
+database/002_auth_invitations.sql  Comptes invités, intégrité, durcissement
+database/003_tuteurs_photos_notifications.sql  Tuteurs, photos (stockage privé), rappels e-mail
+database/004_roles_membres_evenements.sql      Rôles façon Discord, espace membre, événements ciblés, premier admin
+database/tests/rls_checks.sql      Vérification automatique de tous les droits (annulée en fin d’exécution)
+supabase/functions/invite-user/    Fonction serveur d’invitation
+supabase/functions/send-reminders/ Fonction serveur des rappels par e-mail
 ```
 
-## Qui peut faire quoi (appliqué par la base)
+Les clés secrètes (`service_role`, clé du service d’e-mail) n’existent que dans les fonctions serveur.
 
-| | Administrateur | Responsable FI | Responsable adjoint |
-|---|:-:|:-:|:-:|
-| Planning (lecture) | ✓ | ✓ | ✓ |
-| Planning (création, modification) | ✓ | ✓ | — |
-| Membres, présences, suivis | ✓ | ✓ | — |
-| Tâches : toutes, création, attribution | ✓ | ✓ | — |
-| Tâches attribuées : lecture + **avancement uniquement** | ✓ | ✓ | ✓ |
-| Comptes : inviter, changer un rôle, retirer l’accès | ✓ | — | — |
+## Fonctionnalités
 
-Garanties supplémentaires ajoutées par `002` :
-- aucune lecture possible sans connexion (droits du rôle `anon` retirés) ;
-- un compte désactivé perd immédiatement l’accès ;
-- impossible de lier une présence, une tâche, un référent ou un suivi à une autre organisation ou à un compte révoqué ;
-- l’auteur (`created_by`, `recorded_by`) est fixé par le serveur ;
-- une organisation garde toujours au moins un administrateur actif ;
-- longueur des textes limitée (pas de notes détaillées) ; l’e-mail des comptes n’est visible que des administrateurs.
+- **Tableau de bord** : chiffres clés animés, prochaines rencontres, tâches, alerte « À surveiller » (membres absents aux 3 dernières rencontres, suivi créé en un clic avec le tuteur).
+- **Espace membre** : un membre qui a un compte voit son propre tableau de bord, **ses événements** (ouverts à tous ou où il est invité), ses tâches et son compte. Rien d’autre.
+- **Membres** : nom court, disponibilité, statut, **tuteur**, **photo de profil** (recadrée, métadonnées supprimées, stockage privé).
+- **Présences** par rencontre, export **CSV**.
+- **Suivis** avec tuteur, échéance et état.
+- **Planning** : « Planifier le mois », **ciblage** de chaque événement (tout le monde / équipe uniquement / membres choisis), bouton « ✉ Rappel ».
+- **Tâches** avec avancement.
+- **Statistiques** : présence par rencontre, assiduité par membre, tâches par personne, membres par statut.
+- **Suggestions de noms** : les champs où l’on tape un nom (membre, contact d’un suivi, invitation, recherche) proposent les noms déjà enregistrés ; un doublon de membre est signalé ; dans une invitation, choisir le nom d’un membre relie automatiquement sa fiche.
+- **Mon compte** : mot de passe, rappels par e-mail, e-mail de test.
+- **Administration façon Discord** : rôles personnalisables (nom, couleur, ordre, permissions), plusieurs rôles par compte, invitations, lien compte ↔ fiche membre, retrait d’accès.
+
+## Rôles et permissions
+
+Chaque FI démarre avec 4 rôles de base (modifiables, non supprimables) ; l’administrateur peut en créer d’autres (ex. « Accueil », « Louange », « Gestion des présences »). Un compte cumule les permissions de tous ses rôles.
+
+| Permission | Ce qu’elle permet | Admin | Resp. FI | Adjoint | Membre |
+|---|---|:-:|:-:|:-:|:-:|
+| Administrateur | Tout, y compris rôles et comptes | ✓ | | | |
+| Gérer les membres | Fiches, photos, tuteurs | ✓ | ✓ | | |
+| Gérer les présences | Faire l’appel | ✓ | ✓ | | |
+| Gérer les suivis | Prises de nouvelles | ✓ | ✓ | | |
+| Gérer le planning | Créer, modifier, cibler les événements | ✓ | ✓ | | |
+| Gérer les tâches | Créer et attribuer toutes les tâches | ✓ | ✓ | | |
+| Voir tous les événements | Y compris « équipe uniquement » | ✓ | ✓ | ✓ | |
+| Voir les statistiques | Graphiques, export | ✓ | ✓ | | |
+| Envoyer des rappels | Bouton « ✉ Rappel » | ✓ | ✓ | | |
+| *(sans permission)* | Ses événements, ses tâches (avancement), son compte | ✓ | ✓ | ✓ | ✓ |
+
+Garanties appliquées par la base (vérifiées par `database/tests/rls_checks.sql`) :
+- aucune lecture sans connexion ; un compte désactivé perd immédiatement l’accès ;
+- un membre ne voit que les événements ouverts à tous et ceux où il est invité ;
+- seul un administrateur crée des rôles, les attribue ou relie un compte à une fiche membre ;
+- il reste **toujours au moins un administrateur actif** (impossible de retirer son rôle, sa permission ou son accès au dernier) ;
+- impossible de mélanger les données de deux FI (rôles, membres, événements, photos, tâches) ;
+- les photos sont dans un stockage **privé**, lisible uniquement par les comptes qui voient les membres ;
+- l’auteur des modifications est fixé par le serveur ; textes courts imposés.
 
 ## Mise en service
 
 ### 1. Créer le projet Supabase
-Sur [supabase.com](https://supabase.com), créer un projet (région UE conseillée). Noter dans **Project Settings → API** :
-- l’**URL du projet** (`https://xxxx.supabase.co`) ;
-- la clé **anon public** (ou **publishable**, `sb_publishable_…`).
-
-La clé **service_role** (ou `sb_secret_…`) ne doit jamais être copiée dans un fichier du site. Si `config.js` contient une telle clé, l’application refuse de démarrer.
+Sur [supabase.com](https://supabase.com), créer un projet (région UE conseillée). Noter dans **Project Settings → API** l’**URL du projet** et la clé **anon public** (ou **publishable**). La clé **service_role** / `sb_secret_…` ne doit jamais aller dans le site : l’application refuse de démarrer si elle la détecte.
 
 ### 2. Régler l’authentification
-**Authentication → Sign In / Providers** :
-- Email : activé ; **désactiver « Allow new users to sign up »** : seuls les comptes invités pourront exister.
-
-**Authentication → URL Configuration** :
-- **Site URL** : l’adresse publique du site (ex. `https://fi.exemple.org`) ;
-- **Redirect URLs** : la même adresse (et `http://localhost:5317` pour tester en local).
-
-**Authentication → Emails** : personnaliser au besoin les modèles « Invite user » et « Reset password » (en français). Pour un usage réel, configurer un **SMTP personnalisé** (Authentication → Emails → SMTP), car l’envoi intégré de Supabase est très limité.
+- **Authentication → Sign In / Providers** : Email activé, **désactiver « Allow new users to sign up »** (comptes sur invitation uniquement).
+- **Authentication → URL Configuration** : **Site URL** et **Redirect URLs** = l’adresse du site (ex. `https://chris-git28.github.io/fi-espace/`), plus `http://localhost:5317` pour tester en local.
+- **Authentication → Emails** : modèles en français ; pour un usage réel, configurer un **SMTP personnalisé**.
 
 ### 3. Appliquer le schéma
-Dans **SQL Editor**, exécuter dans l’ordre :
-1. `database/001_schema.sql`
-2. `database/002_auth_invitations.sql`
-3. *(conseillé)* `database/tests/rls_checks.sql` : doit afficher `TOUS LES TESTS RLS SONT PASSÉS`. Le script crée des comptes et données fictifs dans une transaction, puis annule tout (`ROLLBACK`).
+Dans **SQL Editor**, exécuter dans l’ordre `001`, `002`, `003`, `004`, puis *(conseillé)* `database/tests/rls_checks.sql`, qui doit afficher `TOUS LES TESTS RLS SONT PASSÉS`.
 
-### 4. Créer le premier administrateur
-1. **Authentication → Users → Add user → Send invitation** (ou *Create new user*) avec votre adresse.
-2. Copier l’UUID du compte créé, puis dans **SQL Editor** :
+### 4. Créer le compte administrateur
+Il n’y a volontairement **pas de compte admin avec un mot de passe fixé dans le code** : le dépôt étant public, n’importe qui pourrait l’utiliser. À la place :
+
+1. **Authentication → Users → Add user → Create new user** : votre adresse e-mail, **le mot de passe de votre choix**, cocher **Auto Confirm User**.
+2. **SQL Editor** — une seule commande, qui crée la FI, ses 4 rôles de base et vous en fait l’administrateur :
 
    ```sql
-   insert into public.organizations (name) values ('Nom de votre FI') returning id;
-
-   -- Avec l'ID renvoyé ci-dessus et l'UUID de votre compte :
-   insert into public.user_roles (user_id, organization_id, role, display_name, email)
-   values ('UUID_DU_COMPTE', 'UUID_ORGANISATION', 'admin', 'Votre prénom', 'votre@adresse');
+   select public.bootstrap_first_admin('votre@adresse.fr', 'Nom de votre FI', 'Votre prénom');
    ```
 
-Les responsables suivants s’invitent depuis l’application (**Administration → Inviter**).
+Vous pouvez ensuite vous connecter sur le site avec cet e-mail et ce mot de passe. Les autres comptes s’invitent depuis **Administration → Inviter une personne**. Cette fonction n’est utilisable que depuis le SQL Editor (le site ne peut pas l’appeler).
 
-### 5. Déployer la fonction d’invitation
+### 5. Déployer les fonctions serveur
 Avec la [CLI Supabase](https://supabase.com/docs/guides/cli), depuis ce dossier :
 
 ```bash
 supabase login
 supabase link --project-ref VOTRE_REF_PROJET
-supabase secrets set SITE_URL=https://fi.exemple.org ALLOWED_ORIGINS=https://fi.exemple.org,http://localhost:5317
+supabase secrets set SITE_URL=https://chris-git28.github.io/fi-espace/ ALLOWED_ORIGINS=https://chris-git28.github.io,http://localhost:5317
 supabase functions deploy invite-user
 ```
 
-(Si la CLI demande un `supabase/config.toml`, lancer d’abord `supabase init` en conservant le dossier `supabase/functions` existant.)
+(Si la CLI demande un `supabase/config.toml`, lancer d’abord `supabase init` en gardant `supabase/functions`.) Sans CLI : **Edge Functions → Deploy a new function → Via editor**, coller le fichier `index.ts`, ajouter les secrets dans **Edge Functions → Secrets**.
 
-Sans CLI, possible aussi depuis le tableau de bord : **Edge Functions → Deploy a new function → Via editor**, nommer la fonction `invite-user`, coller `supabase/functions/invite-user/index.ts`, puis ajouter les secrets `SITE_URL` et `ALLOWED_ORIGINS` dans **Edge Functions → Secrets**. Laisser **« Verify JWT »** activé.
+### 5 bis. Rappels par e-mail
+Avec [Resend](https://resend.com) (offre gratuite suffisante) : vérifier votre domaine, créer une clé API, puis :
 
-La fonction vérifie la session de l’appelant, demande à la base s’il est administrateur de l’organisation (`is_fi_admin`), puis seulement envoie l’invitation et attribue le rôle.
+```bash
+supabase secrets set RESEND_API_KEY=re_xxx MAIL_FROM="FI espace <rappels@votre-domaine.fr>" CRON_SECRET=une-longue-phrase-aleatoire
+supabase functions deploy send-reminders --no-verify-jwt
+```
+
+`--no-verify-jwt` est voulu : la fonction vérifie elle-même le secret du planificateur ou la session de l’utilisateur. Planification horaire (activer **pg_cron** et **pg_net** dans Database → Extensions) :
+
+```sql
+select cron.schedule('fi-rappels', '0 * * * *', $$
+  select net.http_post(
+    url := 'https://VOTRE_REF_PROJET.supabase.co/functions/v1/send-reminders',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', 'MEME_VALEUR_QUE_CRON_SECRET'),
+    body := '{}'::jsonb)
+$$);
+```
+
+| Rappel | Quand | Destinataires |
+|---|---|---|
+| Rencontre | dans les 24 h avant chaque événement | les personnes qui peuvent voir l’événement (selon son ciblage) |
+| Tâche | la veille de l’échéance | la personne à qui elle est attribuée |
+| Suivi | la veille de la date prévue | le tuteur du suivi |
+| Récapitulatif | dimanche à partir de 18 h, avant le bilan de 20 h | tous (événements qui les concernent ; chiffres de la FI pour qui voit les statistiques) |
+| Rappel manuel | bouton « ✉ Rappel » | les personnes concernées par l’événement |
+
+Chacun règle ses rappels dans **Mon compte** ; aucun rappel n’est envoyé deux fois.
 
 ### 6. Connecter le site
-Copier `config.example.js` en `config.js` et renseigner :
+Renseigner `config.js` :
 
 ```js
 window.FI_CONFIG = {
   supabaseUrl: 'https://xxxx.supabase.co',
   supabaseAnonKey: 'clé anon / publishable',
-  siteUrl: 'https://fi.exemple.org'
+  siteUrl: 'https://chris-git28.github.io/fi-espace/'
 };
 ```
 
 ### 7. Héberger
-Le site est entièrement statique (`index.html`, `theme.css`, `app.js`, `config.js`) : Netlify, Vercel, Cloudflare Pages, GitHub Pages ou tout hébergement HTTPS conviennent. Ensuite :
-- pointer le domaine vers l’hébergeur (HTTPS obligatoire) ;
-- reporter l’adresse finale dans **Site URL**, **Redirect URLs** et les secrets `SITE_URL` / `ALLOWED_ORIGINS`.
-
-Pour tester en local : servir le dossier avec n’importe quel serveur statique sur `http://localhost:5317` (par exemple `npx serve -l 5317`). Ouvrir `index.html` directement en `file://` ne permet pas la connexion.
-
-## Pourquoi la sécurité ne dépend pas de l’interface
-
-Le navigateur ne reçoit que du code et la clé publique. Chaque lecture ou écriture est vérifiée par PostgreSQL à partir du jeton de session : un adjoint qui modifierait le JavaScript ou appellerait l’API directement ne pourrait toujours lire que le planning et ses tâches, et ne changer que leur avancement. Masquer les boutons n’est qu’un confort d’affichage. Les seules opérations qui exigent des droits étendus (inviter un compte) passent par la fonction serveur.
+Site statique, publié ici sur GitHub Pages (`https://chris-git28.github.io/fi-espace/`) : chaque `git push` sur `main` met le site à jour. Pour un domaine personnalisé : Settings → Pages → Custom domain, puis reporter l’adresse dans Supabase et les secrets.
 
 ## Parcours des comptes
 
-- **Invitation** : l’administrateur saisit nom, e-mail et rôle. La personne reçoit un e-mail, clique sur le lien, choisit son mot de passe (10 caractères minimum) et arrive dans l’espace. Si l’adresse a déjà un compte (par exemple dans une autre FI), seul le rôle est ajouté.
-- **Mot de passe oublié** : lien sur l’écran de connexion. Le message est identique que le compte existe ou non.
-- **Retrait d’accès** : Administration → décocher « Actif ». Le compte ne voit plus aucune donnée dès sa requête suivante. Pour supprimer définitivement la personne : Authentication → Users → Delete user.
-- **Plusieurs FI** : un même compte peut avoir un rôle dans plusieurs organisations ; un sélecteur apparaît alors en haut de l’écran.
+- **Invitation** : l’administrateur saisit le nom (les membres existants sont proposés), l’e-mail, les rôles et, pour un membre, sa fiche. La personne reçoit un lien, choisit son mot de passe (10 caractères minimum) et arrive dans son espace.
+- **Connexion** : e-mail + mot de passe ; « Mot de passe oublié » sur l’écran de connexion.
+- **Retrait d’accès** : Administration → Gérer → décocher « Accès actif ».
+- **Plusieurs FI** : un sélecteur apparaît en haut de l’écran.
 
 ## Données et confidentialité
 
-- Membres : nom affiché court, disponibilité générale, statut, référent. Pas de coordonnées, pas de notes.
-- Suivis : libellé court (« Contact A. ») et prochaine action. Aucun détail personnel ou spirituel.
-- Prévoir avec l’équipe : durée de conservation, suppression des anciens membres et suivis terminés, sauvegardes (incluses dans les offres payantes Supabase), mention d’information pour les personnes concernées.
+- Membres : nom court, disponibilité générale, statut, tuteur ; photo uniquement avec accord. Pas de coordonnées ni de notes.
+- Suivis : libellé court et prochaine action, aucun détail personnel ou spirituel.
+- E-mails de rappel : organisation pratique uniquement.
+- À définir avec l’équipe : durée de conservation, sauvegardes, information des personnes concernées.
 
 ## Encore à faire
 
-- Fournir l’URL du projet Supabase et la clé publique, puis suivre les étapes 1 à 7.
-- Liste des responsables à inviter et rôles initiaux.
-- Hébergeur et nom de domaine.
-- Politique de conservation et de confidentialité retenue par l’équipe.
-- Facultatif : journal des changements administratifs, export des présences.
+- Créer le projet Supabase et suivre les étapes 1 à 7.
+- Liste des personnes à inviter et rôles de chacun.
+- Facultatif : domaine personnalisé, journal des changements administratifs.

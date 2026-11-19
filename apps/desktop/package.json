@@ -1,7 +1,7 @@
 {
   "name": "fi-espace-desktop",
   "productName": "FI espace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "FI espace — coordination de la FI (application de bureau)",
   "main": "main.js",
   "private": true,

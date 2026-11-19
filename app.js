@@ -41,6 +41,55 @@
     return (w.length > 1 ? w[0][0] + w[1][0] : (w[0] || '?').slice(0, 2)).toUpperCase();
   };
 
+  // ───────────────────────── Effets visuels (décoratifs) ─────────────────────────
+  const motionQuery = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+  const calm = () => motionQuery.matches;
+  const HUES = [155, 42, 14, 188, 265, 340, 120, 28];
+  const hueFor = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return HUES[h % HUES.length]; };
+
+  function decorate() {
+    $$('.mini-avatar').forEach(el => el.style.setProperty('--h', hueFor(el.textContent)));
+  }
+
+  function addSparks(host, count) {
+    if (!host || host.querySelector('.spark')) return;
+    for (let i = 0; i < count; i++) {
+      const s = document.createElement('span');
+      s.className = 'spark';
+      s.style.cssText = `left:${(Math.random() * 92 + 4).toFixed(1)}%;top:${(Math.random() * 70 + 20).toFixed(1)}%;--s:${(Math.random() * 6 + 3).toFixed(1)}px;--d:${(Math.random() * 3 + 3.5).toFixed(2)}s;--delay:${(Math.random() * 5).toFixed(2)}s`;
+      host.appendChild(s);
+    }
+  }
+
+  function countUp(el) {
+    const node = [...el.childNodes].find(n => n.nodeType === 3 && /^\s*\d+\s*$/.test(n.textContent));
+    if (!node || calm()) return;
+    const target = Number(node.textContent);
+    if (!target) return;
+    const t0 = performance.now();
+    const step = t => {
+      const p = Math.min(1, (t - t0) / 800);
+      node.textContent = String(Math.round(target * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  function celebrate(el) {
+    if (calm() || !el?.getBoundingClientRect) return;
+    const r = el.getBoundingClientRect();
+    const colors = ['#17a673', '#1798a8', '#e2b24a', '#f7d98a', '#ee7651', '#e0628a', '#7a5cc4'];
+    for (let i = 0; i < 22; i++) {
+      const c = document.createElement('i');
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 40 + Math.random() * 70;
+      c.className = 'confetti';
+      c.style.cssText = `left:${r.left + r.width / 2}px;top:${r.top + r.height / 2}px;background:${colors[i % colors.length]};--x:${Math.cos(angle) * dist}px;--y:${Math.sin(angle) * dist - 20}px;--r:${Math.random() * 540 - 270}deg`;
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 1000);
+    }
+  }
+
   // ───────────────────────── Configuration ─────────────────────────
   const cfg = window.FI_CONFIG || {};
   const forceDemo = new URLSearchParams(location.search).has('demo');
@@ -350,6 +399,7 @@
         + metric('Prochaine rencontre', '⌂', upcoming()[0] ? `<span style="font-size:19px">${esc(fmtLongDay(eventDate(upcoming()[0])))}</span>` : '–', upcoming()[0] ? esc(eventMeta(upcoming()[0])) : 'aucune date prévue');
     }
     $('#metrics').innerHTML = html;
+    $$('#metrics .metric-value').forEach(countUp);
 
     $('#dashEvents').innerHTML = upcoming().slice(0, 3).map(e =>
       `<div class="event">${datebox(e)}<div class="event-info"><b>${esc(e.title)}</b><small>${eventMeta(e)}</small></div>${eventTag(e)}</div>`).join('')
@@ -472,6 +522,7 @@
   function renderAll() {
     renderDashboard(); renderMembers(); renderAttendance(); renderFollowups(); renderCalendar(); renderTasks(); renderAdmin();
     applyRoleUI();
+    decorate();
   }
 
   // ───────────────────────── Navigation ─────────────────────────
@@ -645,14 +696,14 @@
     else if (ds.editEvent) eventForm(state.events.find(x => x.id === ds.editEvent));
     else if (ds.editFollow) followForm(state.followups.find(x => x.id === ds.editFollow));
     else if (ds.editTask) taskForm(state.tasks.find(x => x.id === ds.editTask));
-    else if (ds.followDone) act(() => api.save('follow_ups', { id: ds.followDone, status: 'done' }), 'Suivi marqué comme fait.');
+    else if (ds.followDone) celebrate(t), act(() => api.save('follow_ups', { id: ds.followDone, status: 'done' }), 'Suivi marqué comme fait.');
   });
 
   document.addEventListener('change', e => {
     const t = e.target;
     const ds = t.dataset;
-    if (ds.taskDone) act(() => api.save('tasks', { id: ds.taskDone, status: t.checked ? 'done' : 'todo' }));
-    else if (ds.taskStatus) act(() => api.save('tasks', { id: ds.taskStatus, status: t.value }));
+    if (ds.taskDone) { if (t.checked) celebrate(t); act(() => api.save('tasks', { id: ds.taskDone, status: t.checked ? 'done' : 'todo' })); }
+    else if (ds.taskStatus) { if (t.value === 'done') celebrate(t); act(() => api.save('tasks', { id: ds.taskStatus, status: t.value })); }
     else if (ds.roleUser) act(() => api.updateAccount(ds.roleUser, { role: t.value }), 'Rôle mis à jour.');
     else if (ds.activeUser) act(() => api.updateAccount(ds.activeUser, { active: t.checked }), t.checked ? 'Compte réactivé.' : 'Accès retiré.');
     else if (t.classList.contains('presence-check')) updatePresentCount();
@@ -830,6 +881,8 @@
     refresh().then(() => document.body.classList.remove('booting'));
   }
 
+  addSparks($('.welcome'), 14);
+  addSparks($('#auth'), 18);
   state.ready = true;
   if (LIVE) bootLive().catch(err => showAuth('login', friendlyError(err), true));
   else bootDemo();

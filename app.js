@@ -82,7 +82,7 @@
 
   function countUp(el) {
     const node = [...el.childNodes].find(n => n.nodeType === 3 && /^\s*\d+\s*$/.test(n.textContent));
-    if (!node || calm()) return;
+    if (!node || calm() || document.body.classList.contains('still')) return;
     const target = Number(node.textContent);
     if (!target) return;
     const t0 = performance.now();
@@ -594,6 +594,14 @@
       return invokeFn('send-reminders', body);
     },
 
+    // Lien d'abonnement d'agenda (mis à jour automatiquement par le téléphone).
+    async calendarLink(renew = false) {
+      if (!LIVE) return null;
+      const { data, error } = await sb.rpc('my_calendar_token', { target_org: state.orgId, renew });
+      if (error) throw error;
+      return `${cfg.supabaseUrl.replace(/\/$/, '')}/functions/v1/calendar-feed?token=${data}`;
+    },
+
     async changePassword(password) {
       if (!LIVE) return;
       const { error } = await sb.auth.updateUser({ password });
@@ -685,8 +693,85 @@
       + '</div>';
   }
 
+  // ───────────────────────── Repères : rendez-vous, missions, agenda ─────────────────────────
+  const inNativeApp = () => Boolean(window.Capacitor?.isNativePlatform?.());
+  const dayDiff = d => Math.round((new Date(d).setHours(0, 0, 0, 0) - startOfToday()) / 864e5);
+  function whenLabel(e) {
+    const d = eventDate(e);
+    const n = dayDiff(d);
+    if (n === 0) return `Aujourd’hui à ${fmtTime(d)}`;
+    if (n === 1) return `Demain à ${fmtTime(d)}`;
+    if (n < 7) return `${cap(d.toLocaleDateString('fr-FR', { weekday: 'long' }))} à ${fmtTime(d)} · dans ${n} jours`;
+    return `${cap(d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }))} à ${fmtTime(d)}`;
+  }
+  function dueBadge(t) {
+    if (t.status === 'done' || !t.due_at) return '';
+    const n = dayDiff(parseDay(t.due_at));
+    if (n < 0) return '<span class="due late">En retard</span>';
+    if (n === 0) return '<span class="due today">Aujourd’hui</span>';
+    if (n === 1) return '<span class="due soon">Demain</span>';
+    if (n < 7) return `<span class="due soon">Dans ${n} jours</span>`;
+    return '';
+  }
+  const myOpenTasks = () => state.tasks.filter(t => t.assigned_to === state.userId && t.status !== 'done')
+    .sort((a, b) => String(a.due_at || '9').localeCompare(String(b.due_at || '9')));
+
+  // Fichier agenda (.ics) : compatible iPhone, Android, Outlook, Google Agenda, Thunderbird.
+  const icsText = s => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  const icsDate = d => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  function icsFor(evs) {
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//FI espace//FR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', `X-WR-CALNAME:${icsText(state.orgName || 'FI')}`];
+    evs.forEach(e => {
+      const start = eventDate(e);
+      const end = e.ends_at ? new Date(e.ends_at) : new Date(+start + 90 * 60e3);
+      lines.push('BEGIN:VEVENT', `UID:${e.id}@fi-espace`, `DTSTAMP:${icsDate(new Date())}`, `DTSTART:${icsDate(start)}`, `DTEND:${icsDate(end)}`,
+        `SUMMARY:${icsText(e.title)}`);
+      if (e.location) lines.push(`LOCATION:${icsText(e.location)}`);
+      if (e.notes) lines.push(`DESCRIPTION:${icsText(e.notes)}`);
+      lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsText(e.title)}`, 'TRIGGER:-PT2H', 'END:VALARM', 'END:VEVENT');
+    });
+    lines.push('END:VCALENDAR');
+    return lines.join('\r\n');
+  }
+  function downloadIcs(evs, filename) {
+    if (!evs.length) { toast('Aucun événement à ajouter.'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([icsFor(evs)], { type: 'text/calendar;charset=utf-8' }));
+    a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast(evs.length > 1 ? `${evs.length} événements prêts à être ajoutés à votre agenda.` : 'Événement prêt à être ajouté à votre agenda.');
+  }
+  function googleCalUrl(e) {
+    const start = eventDate(e);
+    const end = e.ends_at ? new Date(e.ends_at) : new Date(+start + 90 * 60e3);
+    const p = new URLSearchParams({ action: 'TEMPLATE', text: e.title, dates: `${icsDate(start)}/${icsDate(end)}`, details: e.notes || '', location: e.location || '' });
+    return `https://calendar.google.com/calendar/render?${p}`;
+  }
+  // Boutons « agenda » : fichier .ics (sauf dans l'appli mobile, où le lien Google Agenda est plus fiable).
+  const calButtons = e => `${inNativeApp() ? '' : `<button class="row-btn cal-btn" data-ics-event="${esc(e.id)}" title="Ajouter à l’agenda du téléphone ou de l’ordinateur">📅 Mon agenda</button>`}`
+    + `<a class="row-btn cal-btn" href="${esc(googleCalUrl(e))}" target="_blank" rel="noopener">Google Agenda</a>`;
+
+  function renderNextUp() {
+    const e = upcoming().find(x => eventDate(x) >= new Date(Date.now() - 2 * 3600e3));
+    const mission = myOpenTasks()[0];
+    const eventCard = e
+      ? `<div class="nextup-card"><div class="nextup-label">Prochain rendez-vous</div><h2>${esc(e.title)}</h2>`
+        + `<div class="nextup-when">${esc(whenLabel(e))}</div>${e.location ? `<div class="nextup-where">📍 ${esc(e.location)}</div>` : ''}`
+        + `${e.notes ? `<p>${esc(e.notes)}</p>` : ''}<div class="cal-tags">${audienceTag(e)}</div><div class="nextup-actions">${calButtons(e)}</div></div>`
+      : '<div class="nextup-card empty-card"><div class="nextup-label">Prochain rendez-vous</div><h2>Aucun rendez-vous prévu</h2><p>Les prochaines dates apparaîtront ici.</p></div>';
+    const missionCard = mission
+      ? `<div class="nextup-card mission"><div class="nextup-label">Ma prochaine mission</div><h2>${esc(mission.title)}</h2>`
+        + `<div class="nextup-when">${esc(dueLabel(mission.due_at))} ${dueBadge(mission)}</div>${mission.description ? `<p>${esc(mission.description)}</p>` : ''}`
+        + `<div class="nextup-actions"><button class="primary" data-task-finish="${esc(mission.id)}">✓ Mission accomplie</button>`
+        + `${myOpenTasks().length > 1 ? `<button class="row-btn" data-go="tasks">${myOpenTasks().length - 1} autre${myOpenTasks().length > 2 ? 's' : ''} →</button>` : ''}</div></div>`
+      : '<div class="nextup-card mission empty-card"><div class="nextup-label">Mes missions</div><h2>Aucune mission en attente 🙏</h2><p>Les missions qui vous sont confiées apparaîtront ici.</p></div>';
+    $('#nextUp').innerHTML = eventCard + missionCard;
+  }
+
   // ───────────────────────── Rendu : vues ─────────────────────────
   function renderDashboard() {
+    renderNextUp();
     const now = new Date();
     const memberSpace = !isStaff();
     $('#dashEyebrow').textContent = `${cap(now.toLocaleDateString('fr-FR', { weekday: 'long' }))} · ${memberSpace ? 'Espace membre' : 'Espace de coordination'}`;
@@ -715,24 +800,25 @@
         + metric('Tâches ouvertes', '☷', openTasks.length, `${dueSoon} échéance${dueSoon > 1 ? 's' : ''} cette semaine`);
     } else {
       const invites = next.filter(isInvited).length;
+      const doneCount = state.tasks.filter(t => t.status === 'done').length;
       html = metric(memberSpace ? 'Mes événements' : 'Rencontres à venir', '▦', next30, 'dans les 30 prochains jours')
-        + metric('Mes tâches ouvertes', '☷', openTasks.length, `${dueSoon} échéance${dueSoon > 1 ? 's' : ''} cette semaine`)
+        + metric(memberSpace ? 'Mes missions' : 'Mes tâches ouvertes', '☷', openTasks.length, `${dueSoon} échéance${dueSoon > 1 ? 's' : ''} cette semaine`)
         + (memberSpace
           ? metric('Invitations', '✉', invites, 'événements où vous êtes invité')
-          : metric('Tâches terminées', '✓', state.tasks.filter(t => t.status === 'done').length, 'sur vos tâches attribuées'))
-        + metric('Prochain rendez-vous', '⌂', next[0] ? `<span style="font-size:19px">${esc(fmtLongDay(eventDate(next[0])))}</span>` : '–', next[0] ? esc(eventMeta(next[0])) : 'aucune date prévue');
+          : metric('Rencontres ce mois', '⌂', next.filter(e => eventDate(e).getMonth() === now.getMonth()).length, 'à venir ce mois-ci'))
+        + metric(memberSpace ? 'Missions accomplies' : 'Tâches terminées', '✓', doneCount, memberSpace ? 'merci pour votre engagement' : 'sur vos tâches attribuées');
     }
     $('#metrics').innerHTML = html;
     $$('#metrics .metric-value').forEach(countUp);
 
-    $('#dashEventsTitle').textContent = memberSpace ? 'Mes prochains événements' : 'Prochaines rencontres';
-    $('#dashEvents').innerHTML = next.slice(0, memberSpace ? 5 : 3).map(e =>
-      `<div class="event">${datebox(e)}<div class="event-info"><b>${esc(e.title)}</b><small>${eventMeta(e)}</small></div>${audienceTag(e) || eventTag(e)}</div>`).join('')
+    $('#dashEventsTitle').textContent = memberSpace ? 'Mon agenda' : 'Prochaines rencontres';
+    $('#dashEvents').innerHTML = next.slice(0, memberSpace ? 6 : 3).map(e =>
+      `<div class="event">${datebox(e)}<div class="event-info"><b>${esc(e.title)}</b><small>${esc(whenLabel(e))}${e.location ? ` · ${esc(e.location)}` : ''}</small></div>${audienceTag(e) || eventTag(e)}</div>`).join('')
       || '<div class="empty">Aucun événement prévu.</div>';
 
-    $('#dashTasksTitle').textContent = can('manage_tasks') ? 'À faire cette semaine' : 'Mes tâches';
-    $('#dashTasks').innerHTML = openTasks.slice(0, can('manage_tasks') ? 3 : 5).map(t =>
-      `<div class="task"><input type="checkbox" class="check" data-task-done="${esc(t.id)}" ${canEditTask(t) ? '' : 'disabled'} aria-label="Marquer « ${esc(t.title)} » comme terminée"><div class="task-copy"><b>${esc(t.title)}</b><small>${esc(personName(t.assigned_to))} · ${esc(dueLabel(t.due_at))}</small></div></div>`).join('')
+    $('#dashTasksTitle').textContent = can('manage_tasks') ? 'À faire cette semaine' : 'Mes missions';
+    $('#dashTasks').innerHTML = openTasks.slice(0, can('manage_tasks') ? 3 : 6).map(t =>
+      `<div class="task"><input type="checkbox" class="check" data-task-done="${esc(t.id)}" ${canEditTask(t) ? '' : 'disabled'} aria-label="Marquer « ${esc(t.title)} » comme terminée"><div class="task-copy"><b>${esc(t.title)}</b><small>${esc(personName(t.assigned_to))} · ${esc(dueLabel(t.due_at))}</small></div>${dueBadge(t)}</div>`).join('')
       || '<div class="empty">Rien d’urgent pour le moment.</div>';
     const done = state.tasks.length - openTasks.length;
     $('#progressText').textContent = state.tasks.length ? `${done} sur ${state.tasks.length}` : '–';
@@ -801,8 +887,9 @@
     $('#calendarTitle').textContent = isStaff() ? 'Planning FI' : 'Mes événements';
     $('#calendarSub').textContent = isStaff() ? 'Rencontres et activités des prochaines semaines.' : 'Les rencontres ouvertes à tous et celles où vous êtes invité.';
     $('#calendarRows').innerHTML = upcoming().map(e =>
-      `<div class="calendar-item">${datebox(e)}<div><h3>${esc(e.title)}</h3><p>${esc(cap(eventDate(e).toLocaleDateString('fr-FR', { weekday: 'long' })))} · ${eventMeta(e)}</p>${e.notes ? `<p style="margin-top:6px">${esc(e.notes)}</p>` : ''}`
+      `<div class="calendar-item">${datebox(e)}<div><h3>${esc(e.title)}</h3><p>${esc(whenLabel(e))}${e.location ? ` · ${esc(e.location)}` : ''}</p>${e.notes ? `<p style="margin-top:6px">${esc(e.notes)}</p>` : ''}`
       + `<div class="cal-tags">${eventTag(e)}${audienceTag(e)}</div>`
+      + `<div class="cal-actions">${calButtons(e)}</div>`
       + `<button class="row-btn" data-perm="manage_events" data-edit-event="${esc(e.id)}">Modifier</button><button class="row-btn" data-perm="send_reminders" data-remind-event="${esc(e.id)}" title="Envoyer un rappel par e-mail aux personnes concernées">✉ Rappel</button></div></div>`).join('')
       || '<div class="panel empty">Aucune date à venir.</div>';
   }
@@ -812,7 +899,9 @@
   function renderTasks() {
     const order = { in_progress: 0, todo: 1, done: 2 };
     const list = [...state.tasks].sort((a, b) => order[a.status] - order[b.status] || String(a.due_at || '9').localeCompare(String(b.due_at || '9')));
-    $('#taskTag').textContent = can('manage_tasks') ? `${list.filter(t => t.status !== 'done').length} ouvertes` : 'Mes tâches';
+    $('#taskTag').textContent = can('manage_tasks') ? `${list.filter(t => t.status !== 'done').length} ouvertes` : `${list.filter(t => t.status !== 'done').length} à faire`;
+    $('#tasksTitle').textContent = can('manage_tasks') ? 'Tâches & responsabilités' : 'Mes missions';
+    $('#tasksSub').textContent = can('manage_tasks') ? 'Chacun voit clairement ce qu’il porte et pour quand.' : 'Ce qui vous est confié, avec les échéances.';
     $('#taskRows').innerHTML = list.map(t => {
       const editable = canEditTask(t);
       const tag = t.status === 'done' ? 'green' : t.status === 'in_progress' ? 'orange' : '';
@@ -820,7 +909,7 @@
         ? `<select class="status-select" data-task-status="${esc(t.id)}" aria-label="Avancement">${Object.entries(TASK_STATUS).map(([v, l]) => `<option value="${v}" ${v === t.status ? 'selected' : ''}>${l}</option>`).join('')}</select>`
         : `<span class="tag ${tag}">${esc(TASK_STATUS[t.status])}</span>`;
       return `<div class="task ${t.status === 'done' ? 'done' : ''}"><input type="checkbox" class="check" data-task-done="${esc(t.id)}" ${t.status === 'done' ? 'checked' : ''} ${editable ? '' : 'disabled'} aria-label="Marquer « ${esc(t.title)} » comme terminée">`
-        + `<div class="task-copy"><b>${esc(t.title)}</b><small>${esc(personName(t.assigned_to))} · ${esc(dueLabel(t.due_at))}</small>${t.description ? `<small>${esc(t.description)}</small>` : ''}</div>`
+        + `<div class="task-copy"><b>${esc(t.title)} ${dueBadge(t)}</b><small>${esc(personName(t.assigned_to))} · ${esc(dueLabel(t.due_at))}</small>${t.description ? `<small>${esc(t.description)}</small>` : ''}</div>`
         + `<div class="task-actions">${control}<button class="row-btn" data-perm="manage_tasks" data-edit-task="${esc(t.id)}">Modifier</button></div></div>`;
     }).join('') || `<div class="empty">${can('manage_tasks') ? 'Aucune tâche pour le moment.' : 'Aucune tâche attribuée pour le moment.'}</div>`;
   }
@@ -982,6 +1071,7 @@
     document.body.dataset.staff = isStaff() ? 'yes' : 'no';
     $$('.nav button').forEach(b => { b.style.display = allowedView(b.dataset.view) ? 'flex' : 'none'; });
     $('[data-view="calendar"] .nav-text').textContent = isStaff() ? 'Planning FI' : 'Mes événements';
+    $('[data-view="tasks"] .nav-text').textContent = can('manage_tasks') ? 'Tâches' : 'Mes missions';
     $$('[data-perm]').forEach(el => { el.style.display = can(el.dataset.perm) ? '' : 'none'; });
     $('#avatar').textContent = initials(state.displayName || '?');
     $('#avatar').title = state.displayName;
@@ -1031,6 +1121,7 @@
       return wrap(`<div class="photo-field">${f.preview}<div><input type="file" name="${f.name}" accept="image/*" aria-label="${esc(f.label)}">`
         + `${f.value ? '<label class="switch" style="margin-top:8px"><input type="checkbox" class="check" name="remove_photo"> Retirer la photo</label>' : ''}</div></div>`);
     }
+    if (f.type === 'html') return `<div class="field">${f.html}</div>`;
     if (f.type === 'checkbox') {
       return `<label class="switch field-check" data-field="${f.name}"><input type="checkbox" class="check" name="${f.name}" ${f.value ? 'checked' : ''}> ${esc(f.label)}</label>`;
     }
@@ -1298,6 +1389,8 @@
     else if (ds.editTask) taskForm(state.tasks.find(x => x.id === ds.editTask));
     else if (ds.editAccount) accountForm(state.people.find(x => x.user_id === ds.editAccount));
     else if (ds.editRole) roleForm(state.roles.find(x => x.id === ds.editRole));
+    else if (ds.icsEvent) { const ev = state.events.find(x => x.id === ds.icsEvent); if (ev) downloadIcs([ev], `fi-${isoDate(eventDate(ev))}.ics`); }
+    else if (ds.taskFinish) { celebrate(t); act(() => api.save('tasks', { id: ds.taskFinish, status: 'done' }), 'Mission accomplie, merci ! 🙏'); }
     else if (ds.roleUp) act(() => api.moveRole(ds.roleUp, 'up'));
     else if (ds.roleDown) act(() => api.moveRole(ds.roleDown, 'down'));
     else if (ds.followDone) { celebrate(t); act(() => api.save('follow_ups', { id: ds.followDone, status: 'done' }), 'Suivi marqué comme fait.'); }
@@ -1362,6 +1455,29 @@
   $('#inviteBtn').onclick = () => inviteForm();
   $('#addRole').onclick = () => roleForm();
   $('#planMonth').onclick = () => monthPlanForm();
+  $('#icsAll').onclick = () => downloadIcs(upcoming(), 'fi-agenda.ics');
+
+  async function subscribeForm(renew = false) {
+    if (!LIVE) { toast('L’abonnement automatique sera disponible dès que l’application sera connectée. En attendant : « 📅 Tout ajouter à mon agenda ».'); return; }
+    let url;
+    try { url = await api.calendarLink(renew); } catch (err) { toast(friendlyError(err)); return; }
+    const webcal = url.replace(/^https:/, 'webcal:');
+    const google = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`;
+    openForm({
+      title: 'Mon agenda FI, toujours à jour',
+      submitLabel: 'Fermer',
+      fields: [{ type: 'html', name: 'info', html:
+        '<p class="sub" style="margin:0 0 12px;line-height:1.6">Abonnez-vous une fois : les rencontres et sorties qui vous concernent apparaîtront automatiquement dans l’agenda de votre téléphone ou ordinateur, avec un rappel 2 h avant.</p>'
+        + `<div class="sub-actions"><a class="primary" href="${esc(webcal)}">📅 iPhone, Mac, Outlook</a><a class="secondary" href="${esc(google)}" target="_blank" rel="noopener">Google Agenda / Android</a></div>`
+        + `<label class="field" style="margin-top:14px"><span>Lien personnel (à ne pas partager)</span><input type="text" readonly value="${esc(url)}" id="calLink"></label>`
+        + '<div class="sub-actions"><button type="button" class="row-btn" id="copyCal">Copier le lien</button><button type="button" class="row-btn" id="renewCal">Générer un nouveau lien</button></div>' }],
+      onSubmit: async () => {},
+    });
+    $('#copyCal').onclick = async () => { try { await navigator.clipboard.writeText(url); toast('Lien copié.'); } catch { $('#calLink').select(); } };
+    $('#renewCal').onclick = () => { if (confirm('L’ancien lien cessera de fonctionner. Continuer ?')) { $('#modal').close(); subscribeForm(true); } };
+  }
+  $('#subscribeCal').onclick = () => subscribeForm();
+  $('#subscribeCal2').onclick = () => subscribeForm();
   $('#exportCsv').onclick = () => exportAttendanceCsv();
   $('#memberSearch').oninput = renderMembers;
   $('#menu').onclick = () => $('#sidebar').classList.toggle('open');
@@ -1566,7 +1682,12 @@
       try { localStorage.removeItem(LOCAL_KEY); } catch { /* rien à effacer */ }
       location.reload();
     };
+    // Démonstration uniquement : ?as=<compte>&view=<rubrique>&still pour les captures d'écran des stores.
+    const params = new URLSearchParams(location.search);
+    if (!LOCAL && params.get('as') && demo.people.some(p => p.user_id === params.get('as'))) setDemoAccount(params.get('as'));
+    if (params.has('still')) document.body.classList.add('still');
     await refresh();
+    if (!LOCAL && params.get('view')) showView(params.get('view'), true);
     document.body.classList.remove('booting');
   }
 

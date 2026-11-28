@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Confidentialité — FI espace</title>
+<meta name="description" content="Politique de confidentialité de l’application FI espace.">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<style>
+:root{--ink:#22302a;--muted:#5d6862;--green:#0f7a55;--deep:#0c3a2c;--gold:#b8892e;--paper:#fffdf8;--bg:#f4efe2;--line:#e9e2d4}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{background:linear-gradient(120deg,#0c4a37,#0f7a55 55%,#1798a8);color:#fffdf2;padding:40px 16px 32px}
+.wrap{max-width:760px;margin:0 auto;padding:0 16px}
+header .eyebrow{color:#f7d98a;font-size:12px;letter-spacing:1px;text-transform:uppercase;font-weight:700}
+header h1{margin:6px 0 4px;font-size:30px;line-height:1.2}header p{margin:0;opacity:.85}
+main{background:var(--paper);max-width:760px;margin:-16px auto 40px;border-radius:16px;padding:28px 24px;box-shadow:0 12px 34px #0c3a2c14}
+h2{color:var(--deep);font-size:20px;margin:28px 0 8px;padding-bottom:4px;border-bottom:2px solid #f0e3bd}h2:first-child{margin-top:0}
+ul{padding-left:22px}li{margin:4px 0}a{color:var(--green)}
+table{border-collapse:collapse;width:100%;font-size:14px;margin:8px 0}th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}th{background:#f6f1e3}
+.note{background:#f3f7f4;border-left:4px solid var(--green);padding:10px 14px;border-radius:8px;color:var(--muted);font-size:14px}
+footer{text-align:center;color:var(--muted);font-size:13px;padding:0 16px 40px}
+</style>
+</head>
+<body>
+<header><div class="wrap"><div class="eyebrow">✝ FI espace</div><h1>Politique de confidentialité</h1><p>Version du 28 novembre 2026</p></div></header>
+<main>
+<h2>En bref</h2>
+<ul>
+  <li>FI espace sert uniquement à organiser la vie d’une FI : membres, rencontres, présences, suivis et missions.</li>
+  <li>Accès <strong>sur invitation uniquement</strong> : chaque personne ne voit que ce que son rôle lui permet de voir.</li>
+  <li><strong>Aucune publicité, aucun traçage, aucune revente</strong> de données. Pas de statistiques de navigation.</li>
+  <li>On n’enregistre que le nécessaire : pas d’adresse postale, pas de téléphone, pas de notes intimes ou spirituelles.</li>
+</ul>
+
+<h2>Qui est responsable ?</h2>
+<p>Le responsable du traitement est l’équipe de responsables de la FI qui utilise l’application (l’administrateur de votre FI). Pour toute question ou demande, adressez-vous à lui, ou écrivez via la page de contact du projet : <a href="https://github.com/InLighTs28/fi-espace/issues">github.com/InLighTs28/fi-espace/issues</a>.</p>
+
+<h2>Données traitées</h2>
+<table>
+  <tr><th>Données</th><th>Pourquoi</th><th>Qui y a accès</th></tr>
+  <tr><td>Compte : adresse e-mail, nom affiché, mot de passe (chiffré, jamais lisible)</td><td>Se connecter, recevoir invitations et rappels</td><td>La personne ; l’e-mail est visible des seuls administrateurs</td></tr>
+  <tr><td>Rôles et permissions</td><td>Savoir qui peut voir ou modifier quoi</td><td>Administrateurs</td></tr>
+  <tr><td>Fiche membre : nom court, disponibilité générale, statut, tuteur, photo (facultative, avec accord)</td><td>Accompagner les membres</td><td>Responsables ayant la permission de voir les membres ; la personne voit sa propre fiche</td></tr>
+  <tr><td>Événements, présences, suivis (libellé court et prochaine action), missions</td><td>Organiser la FI, préparer les bilans</td><td>Selon les rôles ; un membre ne voit que ses événements et ses missions</td></tr>
+  <tr><td>Préférences de rappels, lien d’abonnement d’agenda, journal des rappels envoyés</td><td>Envoyer les rappels demandés, sans doublon</td><td>La personne ; le journal est visible des administrateurs</td></tr>
+</table>
+<p>Base légale : l’intérêt légitime de la FI à s’organiser, et le consentement pour la photo de profil.</p>
+
+<h2>Où sont les données ?</h2>
+<ul>
+  <li><strong>Supabase</strong> (base de données, comptes, photos privées) — hébergement dans l’Union européenne recommandé.</li>
+  <li><strong>Resend</strong> pour l’envoi des e-mails de rappel (adresse e-mail et contenu du rappel uniquement).</li>
+  <li><strong>GitHub Pages</strong> héberge le site (aucune donnée de la FI n’y est stockée).</li>
+  <li>Pour afficher l’interface, votre appareil télécharge les polices de caractères chez Google Fonts et une bibliothèque chez jsDelivr ; ces services voient votre adresse IP, comme pour tout site web.</li>
+</ul>
+<p>Les échanges sont chiffrés (HTTPS). Les règles d’accès sont appliquées par la base de données elle-même, pas seulement par l’affichage.</p>
+
+<h2>Sur votre appareil</h2>
+<p>L’application conserve votre session de connexion et quelques préférences d’affichage dans le stockage local de votre navigateur ou de l’application. Pas de cookie publicitaire ni de traceur.</p>
+
+<h2>Durée de conservation</h2>
+<ul>
+  <li>Compte : tant que vous faites partie de la FI. Un accès retiré coupe immédiatement la lecture des données.</li>
+  <li>Fiches des anciens membres, suivis terminés, présences : à supprimer par les responsables lorsqu’ils ne sont plus utiles (au plus tard 2 ans après la dernière activité).</li>
+  <li>Journal des rappels : 12 mois.</li>
+</ul>
+
+<h2>Vos droits</h2>
+<p>Vous pouvez demander l’accès à vos données, leur correction, leur suppression, ou vous opposer à leur utilisation. Changez vous-même votre mot de passe et vos rappels dans « Mon compte ».</p>
+<p><strong>Supprimer mon compte :</strong> demandez-le à l’administrateur de votre FI (ou via la page de contact ci-dessus). Le compte et les données associées (préférences, lien d’agenda, lien avec votre fiche) sont supprimés sous 30 jours ; votre photo est effacée immédiatement sur demande.</p>
+<p>Vous pouvez aussi saisir la CNIL (<a href="https://www.cnil.fr">cnil.fr</a>).</p>
+
+<h2>Enfants</h2>
+<p>L’application s’adresse aux membres d’une FI. Les comptes de personnes mineures ne doivent être créés qu’avec l’accord d’un parent.</p>
+
+<p class="note">Cette politique peut évoluer ; la date de mise à jour figure en haut de la page.</p>
+</main>
+<footer><a href="./">← Retour à FI espace</a></footer>
+</body>
+</html>

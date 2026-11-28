@@ -1,4 +1,4 @@
--- FI Espace — vérification des droits (RLS + triggers), après les migrations 001 à 004.
+-- FI Espace — vérification des droits (RLS + triggers), après les migrations 001 à 005.
 -- Utilisation : Supabase → SQL Editor, coller ce fichier et exécuter.
 -- Tout se passe dans une transaction annulée à la fin (ROLLBACK) : rien n'est conservé.
 -- Le script s'arrête sur la première erreur « ÉCHEC : … ». Sinon la dernière ligne affiche « TOUS LES TESTS RLS SONT PASSÉS ».
@@ -400,6 +400,59 @@ do $$ begin
     raise exception 'ÉCHEC : l''admin B doit voir uniquement la FI B'; end if;
 end $$;
 reset role;
+
+-- ───────── Abonnement d'agenda (migration 005) ─────────
+select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000008","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare t1 uuid; t2 uuid; t3 uuid;
+begin
+  t1 := public.my_calendar_token('aa000000-0000-4000-8000-0000000000aa');
+  t2 := public.my_calendar_token('aa000000-0000-4000-8000-0000000000aa');
+  if t1 is null or t1 <> t2 then raise exception 'ÉCHEC : le lien d''agenda doit rester stable'; end if;
+  t3 := public.my_calendar_token('aa000000-0000-4000-8000-0000000000aa', true);
+  if t3 = t1 then raise exception 'ÉCHEC : le renouvellement doit changer le lien'; end if;
+  perform set_config('test.member_token', t3::text, true);
+  begin
+    perform public.my_calendar_token('bb000000-0000-4000-8000-0000000000bb');
+    raise exception 'ÉCHEC : lien d''agenda obtenu pour une autre FI';
+  exception when others then if sqlerrm like 'ÉCHEC%' then raise; end if;
+  end;
+  begin
+    perform * from public.calendar_feed_events(t3);
+    raise exception 'ÉCHEC : la fonction du flux d''agenda est appelable depuis le site';
+  exception when others then if sqlerrm like 'ÉCHEC%' then raise; end if;
+  end;
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', '{"sub":"a0000000-0000-4000-8000-000000000002","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare t uuid;
+begin
+  t := public.my_calendar_token('aa000000-0000-4000-8000-0000000000aa');
+  perform set_config('test.leader_token', t::text, true);
+  if (select count(*) from public.calendar_tokens) <> 1 then raise exception 'ÉCHEC : un compte voit les liens d''agenda des autres'; end if;
+end $$;
+reset role;
+
+do $$
+declare member_titles text; leader_count int;
+begin
+  select string_agg(title, ',' order by title) into member_titles
+    from public.calendar_feed_events(current_setting('test.member_token')::uuid);
+  if member_titles is distinct from 'FI ouverte,Sortie A1' then
+    raise exception 'ÉCHEC : le flux d''agenda du membre doit contenir uniquement ses événements (vu : %)', member_titles; end if;
+  select count(*) into leader_count from public.calendar_feed_events(current_setting('test.leader_token')::uuid);
+  if leader_count <> 4 then raise exception 'ÉCHEC : le flux du responsable doit contenir les 4 événements de sa FI'; end if;
+  if (select count(*) from public.calendar_feed_events('00000000-0000-4000-8000-000000000000')) <> 0 then
+    raise exception 'ÉCHEC : un lien inconnu renvoie des événements'; end if;
+  update public.user_roles set active = false where user_id = 'a0000000-0000-4000-8000-000000000008';
+  if (select count(*) from public.calendar_feed_events(current_setting('test.member_token')::uuid)) <> 0 then
+    raise exception 'ÉCHEC : le flux d''un compte désactivé renvoie encore des événements'; end if;
+  update public.user_roles set active = true where user_id = 'a0000000-0000-4000-8000-000000000008';
+end $$;
 
 -- ───────── Visiteur non connecté ─────────
 select set_config('request.jwt.claims', '', true);

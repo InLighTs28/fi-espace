@@ -1,8 +1,8 @@
 // FI espace — service worker : rend l'application installable et l'ouvre même hors connexion.
 // Stratégie « réseau d'abord » : la version en ligne est toujours prioritaire, le cache ne sert qu'en secours.
 // Seuls les fichiers du site sont mis en cache : jamais les données (Supabase) ni d'autres domaines.
-const CACHE = 'fi-espace-v1';
-const SHELL = ['./', 'index.html', 'theme.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'fi-espace-v2';
+const SHELL = ['./', 'index.html', 'theme.css', 'app.js', 'config.js', 'manifest.webmanifest', 'confidentialite.html', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

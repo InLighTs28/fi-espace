@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const target = process.argv[2];
 if (!target) { console.error('Usage : node scripts/copy-web.mjs <dossier cible>'); process.exit(1); }
-const PUBLIC = ['index.html', 'theme.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icons'];
+const PUBLIC = ['index.html', 'theme.css', 'app.js', 'config.js', 'manifest.webmanifest', 'confidentialite.html', 'icons'];
 
 rmSync(target, { recursive: true, force: true });
 mkdirSync(target, { recursive: true });

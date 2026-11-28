@@ -263,3 +263,27 @@ body:not(.local-data) .local-only{display:none!important}
 body.local-data .demo-only{display:none!important}
 body.local-data .demo-card.local-only{border-color:#f7d98a88}
 body.local-data select#role.demo-only{display:inline-block!important}
+
+/* ═════════ Repères : prochain rendez-vous, missions, agenda ═════════ */
+.nextup{display:grid;grid-template-columns:1.3fr 1fr;gap:14px;margin:-6px 0 20px}
+.nextup-card{position:relative;overflow:hidden;border-radius:16px;padding:20px 22px;background:linear-gradient(90deg,var(--gold),var(--coral)) top/100% 4px no-repeat,var(--paper);box-shadow:0 12px 34px #0c3a2c14;animation:rise .5s ease both}
+.nextup-card.mission{background:linear-gradient(90deg,var(--emerald2),var(--teal)) top/100% 4px no-repeat,var(--paper);animation-delay:.08s}
+.nextup-card h2{font:700 19px Manrope,sans-serif;margin:6px 0 6px;letter-spacing:-.3px;color:var(--deep)}
+.nextup-card p{margin:8px 0 0;color:var(--muted);font-size:12.5px;line-height:1.5}
+.nextup-label{font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#a8843d}
+.nextup-card.mission .nextup-label{color:var(--emerald)}
+.nextup-when{font-size:14px;font-weight:600;color:#22302a;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.nextup-where{font-size:12.5px;color:#4e5c53;margin-top:4px}
+.nextup-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.empty-card h2{color:#8a918b}
+.cal-btn{text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+.cal-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.due{display:inline-block;font-size:10px;font-weight:700;padding:3px 8px;border-radius:99px;white-space:nowrap;vertical-align:middle}
+.due.late{background:#fde3dc;color:#b03a1d}.due.today{background:#fff0cf;color:#8a5a00}.due.soon{background:#e4f3ec;color:#0b6a49}
+.task .due{margin-left:auto;align-self:center}
+@media(max-width:650px){.nextup{grid-template-columns:1fr;margin-top:-4px}.nextup-card{padding:18px}.nextup-card h2{font-size:17px}}
+.sub-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.sub-actions a{text-decoration:none;display:inline-flex;align-items:center}
+.dash-grid>*,.nextup>*,.attendance-grid>*,.admin-grid>*{min-width:0}.task-copy{min-width:0;overflow-wrap:anywhere}
+body.still *,body.still *::before,body.still *::after{animation:none!important;transition:none!important}body.still .spark,body.still #toast{display:none!important}
+body.still #role{display:none!important}
+.hbar-track,.stack-track{min-width:70px}@media(max-width:1200px){#statsBody .dash-grid{grid-template-columns:1fr}}

@@ -1,6 +1,6 @@
 {
   "name": "fi-espace-mobile",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "FI espace — application mobile (Android et iPhone) avec Capacitor",
   "scripts": {

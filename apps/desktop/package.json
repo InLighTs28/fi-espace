@@ -1,7 +1,7 @@
 {
   "name": "fi-espace-desktop",
   "productName": "FI espace",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "FI espace — coordination de la FI (application de bureau)",
   "main": "main.js",
   "private": true,
@@ -19,7 +19,7 @@
     "electron-builder": "25.1.8"
   },
   "build": {
-    "appId": "io.github.chrisgit28.fiespace",
+    "appId": "fr.fiespace.app",
     "productName": "FI espace",
     "directories": {
       "output": "dist",
@@ -58,5 +58,5 @@
       "artifactName": "FI-espace-${version}-linux.${ext}"
     }
   },
-  "homepage": "https://chris-git28.github.io/fi-espace/"
+  "homepage": "https://inlights28.github.io/fi-espace/"
 }

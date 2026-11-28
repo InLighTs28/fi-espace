@@ -4,7 +4,8 @@
 const { app, BrowserWindow, Menu, shell } = require('electron');
 const path = require('path');
 
-const SITE_URL = 'https://chris-git28.github.io/fi-espace/';
+// Adresse du site. Si elle change (nouveau domaine…), mettre à jour ici et publier une nouvelle version.
+const SITE_URL = 'https://inlights28.github.io/fi-espace/';
 const SITE = new URL(SITE_URL);
 const isOwnPage = url => { try { const u = new URL(url); return u.origin === SITE.origin && u.pathname.startsWith(SITE.pathname); } catch { return false; } };
 
@@ -31,7 +32,11 @@ function createWindow() {
     if (!isOwnPage(url)) { event.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); }
   });
   win.webContents.on('did-fail-load', (_e, code, _desc, url, isMainFrame) => {
-    if (isMainFrame && code !== -3) win.loadFile(path.join(__dirname, 'offline.html'));
+    if (isMainFrame && code !== -3) win.loadFile(path.join(__dirname, 'offline.html'), { query: { site: SITE_URL } });
+  });
+  // Page d'erreur du serveur (ex. 404 si l'adresse du site a changé) : afficher l'écran d'aide plutôt qu'une page vide.
+  win.webContents.on('did-navigate', (_e, url, httpResponseCode) => {
+    if (isOwnPage(url) && httpResponseCode >= 400) win.loadFile(path.join(__dirname, 'offline.html'), { query: { site: SITE_URL, code: String(httpResponseCode) } });
   });
 
   win.loadURL(SITE_URL);

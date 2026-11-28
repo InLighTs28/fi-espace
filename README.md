@@ -1,208 +1,102 @@
 # FI espace — application de coordination
 
-Application web responsive pour la coordination d’une FI : responsables, adjoints et membres. Direction artistique chrétienne (vert profond, ivoire, doré, croix discrète, citation courte), animations désactivées si le système demande de réduire les animations.
+Application pour la coordination d’une FI : responsables, adjoints et membres. Direction artistique chrétienne (vert profond, ivoire, doré, croix discrète), animations désactivées si le système demande de réduire les animations.
+
+**Site : https://inlights28.github.io/fi-espace/** · Mise en service : **[MISE-EN-SERVICE.md](MISE-EN-SERVICE.md)** · Stores : **[store/FICHES-STORES.md](store/FICHES-STORES.md)** · Confidentialité : [confidentialite.html](confidentialite.html)
 
 ## Deux modes de fonctionnement
 
-| Mode | Quand | Données | Sécurité |
-|---|---|---|---|
-| **Démonstration** | `config.js` vide, ou `?demo` ajouté à l’URL | Fictives, en mémoire, perdues au rechargement | Aucune : le sélecteur en haut permet d’essayer chaque compte (admin, responsable, adjoint, membre) |
-| **Connecté** | `config.js` rempli avec l’URL et la clé publique Supabase | Base PostgreSQL Supabase | Connexion e-mail + mot de passe, droits vérifiés par la base (RLS) à chaque requête |
+| Mode | Quand | Données |
+|---|---|---|
+| **Démonstration** | `config.js` vide (ou `?demo` dans l’URL) | Fictives ; le sélecteur en haut permet d’essayer chaque compte |
+| **Connecté** | `config.js` rempli avec l’URL et la clé publique Supabase | Base Supabase ; connexion e-mail + mot de passe ; droits vérifiés par la base à chaque requête |
 
-Toutes les personnes, dates et statistiques du mode démonstration sont **inventées**.
+## Fonctionnalités
+
+- **Pour chaque membre : un repère clair.** En tête de l’accueil :
+  - le **prochain rendez-vous** (date, heure, lieu, compte à rebours) ;
+  - la **prochaine mission**, avec le bouton « Mission accomplie » ;
+  - l’agenda des événements qui le concernent ;
+  - les échéances signalées (en retard, aujourd’hui, cette semaine).
+- **Agenda du téléphone** :
+  - « 📅 Mon agenda » ajoute un événement ;
+  - « Tout ajouter à mon agenda » ajoute toutes les dates ;
+  - « 🔄 S’abonner » donne un lien personnel : l’agenda de l’iPhone, d’Android, de Google ou d’Outlook se met alors à jour tout seul, avec un rappel 2 h avant.
+- **Rappels par e-mail** : la veille des rencontres et des échéances, et un récapitulatif avant le bilan du dimanche.
+- **Pour les responsables** :
+  - membres (tuteur, photo, statut), présences, suivis ;
+  - planning (planification du mois, événements ciblés : tous / équipe / membres choisis) ;
+  - tâches, statistiques, alertes d’absences répétées, export CSV.
+- **Administration façon Discord** :
+  - rôles personnalisables (couleur, ordre, permissions), cumulables ;
+  - invitations, lien entre un compte et sa fiche membre.
+- **Suggestions de noms** dans les champs de saisie, avec alerte en cas de doublon.
 
 ## Fichiers
 
 ```
-index.html, theme.css, app.js      Le site (statique)
-config.example.js / config.js      Configuration publique (config.js vide = démonstration)
-database/001_schema.sql            Tables de base
-database/002_auth_invitations.sql  Comptes invités, intégrité, durcissement
-database/003_tuteurs_photos_notifications.sql  Tuteurs, photos (stockage privé), rappels e-mail
-database/004_roles_membres_evenements.sql      Rôles façon Discord, espace membre, événements ciblés, premier admin
-database/tests/rls_checks.sql      Vérification automatique de tous les droits (annulée en fin d’exécution)
-supabase/functions/invite-user/    Fonction serveur d’invitation
-supabase/functions/send-reminders/ Fonction serveur des rappels par e-mail
+index.html, theme.css, app.js          Le site (statique, installable : manifest.webmanifest, sw.js, icons/)
+confidentialite.html                   Politique de confidentialité (exigée par les stores)
+config.js                              Configuration publique (vide = démonstration)
+database/001…005_*.sql                 Migrations ; database/INSTALLATION-COMPLETE.sql = tout en un fichier
+database/tests/rls_checks.sql          Vérification automatique de tous les droits
+supabase/functions/                    invite-user, send-reminders, calendar-feed (fonctions serveur)
+apps/desktop, apps/mobile              Applications Windows/macOS/Linux (Electron) et Android/iOS (Capacitor)
+store/                                 Textes des fiches, captures d’écran, bannière Google Play
+scripts/                               Copie du site pour le mobile, fichier d’installation, import des membres
+private/                               Données réelles de la FI — exclu de Git, jamais publié
 ```
-
-Les clés secrètes (`service_role`, clé du service d’e-mail) n’existent que dans les fonctions serveur.
-
-## Fonctionnalités
-
-- **Tableau de bord** : chiffres clés animés, prochaines rencontres, tâches, alerte « À surveiller » (membres absents aux 3 dernières rencontres, suivi créé en un clic avec le tuteur).
-- **Espace membre** : un membre qui a un compte voit son propre tableau de bord, **ses événements** (ouverts à tous ou où il est invité), ses tâches et son compte. Rien d’autre.
-- **Membres** : nom court, disponibilité, statut, **tuteur**, **photo de profil** (recadrée, métadonnées supprimées, stockage privé).
-- **Présences** par rencontre, export **CSV**.
-- **Suivis** avec tuteur, échéance et état.
-- **Planning** : « Planifier le mois », **ciblage** de chaque événement (tout le monde / équipe uniquement / membres choisis), bouton « ✉ Rappel ».
-- **Tâches** avec avancement.
-- **Statistiques** : présence par rencontre, assiduité par membre, tâches par personne, membres par statut.
-- **Suggestions de noms** : les champs où l’on tape un nom (membre, contact d’un suivi, invitation, recherche) proposent les noms déjà enregistrés ; un doublon de membre est signalé ; dans une invitation, choisir le nom d’un membre relie automatiquement sa fiche.
-- **Mon compte** : mot de passe, rappels par e-mail, e-mail de test.
-- **Administration façon Discord** : rôles personnalisables (nom, couleur, ordre, permissions), plusieurs rôles par compte, invitations, lien compte ↔ fiche membre, retrait d’accès.
 
 ## Rôles et permissions
 
-Chaque FI démarre avec 4 rôles de base (modifiables, non supprimables) ; l’administrateur peut en créer d’autres (ex. « Accueil », « Louange », « Gestion des présences »). Un compte cumule les permissions de tous ses rôles.
+Chaque FI démarre avec 4 rôles de base, modifiables mais pas supprimables. L’administrateur peut en créer d’autres (ex. « Accueil », « Louange »). Un compte cumule les permissions de tous ses rôles.
 
-| Permission | Ce qu’elle permet | Admin | Resp. FI | Adjoint | Membre |
-|---|---|:-:|:-:|:-:|:-:|
-| Administrateur | Tout, y compris rôles et comptes | ✓ | | | |
-| Gérer les membres | Fiches, photos, tuteurs | ✓ | ✓ | | |
-| Gérer les présences | Faire l’appel | ✓ | ✓ | | |
-| Gérer les suivis | Prises de nouvelles | ✓ | ✓ | | |
-| Gérer le planning | Créer, modifier, cibler les événements | ✓ | ✓ | | |
-| Gérer les tâches | Créer et attribuer toutes les tâches | ✓ | ✓ | | |
-| Voir tous les événements | Y compris « équipe uniquement » | ✓ | ✓ | ✓ | |
-| Voir les statistiques | Graphiques, export | ✓ | ✓ | | |
-| Envoyer des rappels | Bouton « ✉ Rappel » | ✓ | ✓ | | |
-| *(sans permission)* | Ses événements, ses tâches (avancement), son compte | ✓ | ✓ | ✓ | ✓ |
+| Permission | Admin | Resp. FI | Adjoint | Membre |
+|---|:-:|:-:|:-:|:-:|
+| Administrateur (comptes, rôles) | ✓ | | | |
+| Gérer membres / présences / suivis / planning / tâches | ✓ | ✓ | | |
+| Voir tous les événements (y compris « équipe ») | ✓ | ✓ | ✓ | |
+| Statistiques, rappels manuels | ✓ | ✓ | | |
+| Ses événements, ses missions, son compte, son agenda | ✓ | ✓ | ✓ | ✓ |
 
-Garanties appliquées par la base (vérifiées par `database/tests/rls_checks.sql`) :
-- aucune lecture sans connexion ; un compte désactivé perd immédiatement l’accès ;
-- un membre ne voit que les événements ouverts à tous et ceux où il est invité ;
-- seul un administrateur crée des rôles, les attribue ou relie un compte à une fiche membre ;
-- il reste **toujours au moins un administrateur actif** (impossible de retirer son rôle, sa permission ou son accès au dernier) ;
-- impossible de mélanger les données de deux FI (rôles, membres, événements, photos, tâches) ;
-- les photos sont dans un stockage **privé**, lisible uniquement par les comptes qui voient les membres ;
-- l’auteur des modifications est fixé par le serveur ; textes courts imposés.
-
-## Mise en service
-
-### 1. Créer le projet Supabase
-Sur [supabase.com](https://supabase.com), créer un projet (région UE conseillée). Noter dans **Project Settings → API** l’**URL du projet** et la clé **anon public** (ou **publishable**). La clé **service_role** / `sb_secret_…` ne doit jamais aller dans le site : l’application refuse de démarrer si elle la détecte.
-
-### 2. Régler l’authentification
-- **Authentication → Sign In / Providers** : Email activé, **désactiver « Allow new users to sign up »** (comptes sur invitation uniquement).
-- **Authentication → URL Configuration** : **Site URL** et **Redirect URLs** = l’adresse du site (ex. `https://chris-git28.github.io/fi-espace/`), plus `http://localhost:5317` pour tester en local.
-- **Authentication → Emails** : modèles en français ; pour un usage réel, configurer un **SMTP personnalisé**.
-
-### 3. Appliquer le schéma
-Dans **SQL Editor**, exécuter dans l’ordre `001`, `002`, `003`, `004`, puis *(conseillé)* `database/tests/rls_checks.sql`, qui doit afficher `TOUS LES TESTS RLS SONT PASSÉS`.
-
-### 4. Créer le compte administrateur
-Il n’y a volontairement **pas de compte admin avec un mot de passe fixé dans le code** : le dépôt étant public, n’importe qui pourrait l’utiliser. À la place :
-
-1. **Authentication → Users → Add user → Create new user** : votre adresse e-mail, **le mot de passe de votre choix**, cocher **Auto Confirm User**.
-2. **SQL Editor** — une seule commande, qui crée la FI, ses 4 rôles de base et vous en fait l’administrateur :
-
-   ```sql
-   select public.bootstrap_first_admin('votre@adresse.fr', 'Nom de votre FI', 'Votre prénom');
-   ```
-
-Vous pouvez ensuite vous connecter sur le site avec cet e-mail et ce mot de passe. Les autres comptes s’invitent depuis **Administration → Inviter une personne**. Cette fonction n’est utilisable que depuis le SQL Editor (le site ne peut pas l’appeler).
-
-### 5. Déployer les fonctions serveur
-Avec la [CLI Supabase](https://supabase.com/docs/guides/cli), depuis ce dossier :
-
-```bash
-supabase login
-supabase link --project-ref VOTRE_REF_PROJET
-supabase secrets set SITE_URL=https://chris-git28.github.io/fi-espace/ ALLOWED_ORIGINS=https://chris-git28.github.io,http://localhost:5317
-supabase functions deploy invite-user
-```
-
-(Si la CLI demande un `supabase/config.toml`, lancer d’abord `supabase init` en gardant `supabase/functions`.) Sans CLI : **Edge Functions → Deploy a new function → Via editor**, coller le fichier `index.ts`, ajouter les secrets dans **Edge Functions → Secrets**.
-
-### 5 bis. Rappels par e-mail
-Avec [Resend](https://resend.com) (offre gratuite suffisante) : vérifier votre domaine, créer une clé API, puis :
-
-```bash
-supabase secrets set RESEND_API_KEY=re_xxx MAIL_FROM="FI espace <rappels@votre-domaine.fr>" CRON_SECRET=une-longue-phrase-aleatoire
-supabase functions deploy send-reminders --no-verify-jwt
-```
-
-`--no-verify-jwt` est voulu : la fonction vérifie elle-même le secret du planificateur ou la session de l’utilisateur. Planification horaire (activer **pg_cron** et **pg_net** dans Database → Extensions) :
-
-```sql
-select cron.schedule('fi-rappels', '0 * * * *', $$
-  select net.http_post(
-    url := 'https://VOTRE_REF_PROJET.supabase.co/functions/v1/send-reminders',
-    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', 'MEME_VALEUR_QUE_CRON_SECRET'),
-    body := '{}'::jsonb)
-$$);
-```
-
-| Rappel | Quand | Destinataires |
-|---|---|---|
-| Rencontre | dans les 24 h avant chaque événement | les personnes qui peuvent voir l’événement (selon son ciblage) |
-| Tâche | la veille de l’échéance | la personne à qui elle est attribuée |
-| Suivi | la veille de la date prévue | le tuteur du suivi |
-| Récapitulatif | dimanche à partir de 18 h, avant le bilan de 20 h | tous (événements qui les concernent ; chiffres de la FI pour qui voit les statistiques) |
-| Rappel manuel | bouton « ✉ Rappel » | les personnes concernées par l’événement |
-
-Chacun règle ses rappels dans **Mon compte** ; aucun rappel n’est envoyé deux fois.
-
-### 6. Connecter le site
-Renseigner `config.js` :
-
-```js
-window.FI_CONFIG = {
-  supabaseUrl: 'https://xxxx.supabase.co',
-  supabaseAnonKey: 'clé anon / publishable',
-  siteUrl: 'https://chris-git28.github.io/fi-espace/'
-};
-```
-
-### 7. Héberger
-Site statique, publié ici sur GitHub Pages (`https://chris-git28.github.io/fi-espace/`) : chaque `git push` sur `main` met le site à jour. Pour un domaine personnalisé : Settings → Pages → Custom domain, puis reporter l’adresse dans Supabase et les secrets.
+Garanties appliquées par la base, vérifiées par `database/tests/rls_checks.sql` et par injection volontaire de failles :
+- aucune lecture sans connexion ;
+- un compte désactivé perd l’accès immédiatement, flux d’agenda compris ;
+- un membre ne voit que ses événements ;
+- il reste toujours au moins un administrateur ;
+- pas de mélange entre deux FI ;
+- les photos sont en stockage privé ;
+- le lien d’agenda est secret, personnel et renouvelable.
 
 ## Applications
 
-| Plateforme | Le plus simple (gratuit, tout de suite) | Version « store » |
-|---|---|---|
-| Windows | Ouvrir le site dans Edge ou Chrome → menu ⋯ → **Installer FI espace** | Installateur `.exe` (Releases GitHub) → Microsoft Store |
-| macOS | Chrome : ⋯ → Installer ; Safari : Fichier → **Ajouter au Dock** | `.dmg` (Releases) → Mac App Store |
-| Linux | Chrome/Edge : Installer | `.AppImage` / `.deb` (Releases) → Flathub ou Snap Store |
-| Android | Chrome : ⋮ → **Installer l’application** | `.apk` (Releases) → Google Play |
-| iPhone / iPad | Safari : Partager → **Sur l’écran d’accueil** | Projet Xcode (Mac requis) → App Store |
+| Plateforme | Tout de suite, gratuit | Fichiers (Releases GitHub) | Store |
+|---|---|---|---|
+| Windows | Edge/Chrome → ⋯ → **Installer FI espace** | `.exe` | Microsoft Store |
+| macOS | Chrome → Installer ; Safari → **Ajouter au Dock** | `.dmg` | Mac App Store |
+| Linux | Chrome/Edge → Installer | `.AppImage`, `.deb` | Flathub / Snap (facultatif) |
+| Android | Chrome → **Installer l’application** | `.apk` | Google Play |
+| iPhone / iPad | Safari → Partager → **Sur l’écran d’accueil** | — | App Store |
 
-Le site est une **application installable (PWA)** : icône, fenêtre propre, ouverture hors connexion (`manifest.webmanifest`, `sw.js`, dossier `icons/`).
+**Construction automatique** (`.github/workflows/apps.yml`), à chaque étiquette `vX.Y.Z` (`git tag v1.0.3 && git push --tags`) :
+- installateurs de bureau ;
+- APK Android ;
+- vérification de la compilation iOS.
 
-### Raccourci « FI espace » sur le Bureau (cet ordinateur)
-Le raccourci ouvre la version locale du dossier dans une fenêtre dédiée (Edge en mode application). Elle lit le fichier **`private/donnees-fi.js`** : les membres réels du compte rendu. Ce dossier est **exclu de Git** et n’est jamais publié. Les modifications faites dans cette version restent sur cet ordinateur. Le bouton « Recharger depuis le fichier privé » se trouve dans Mon compte. Une fois Supabase en place, la base remplace ce fichier.
+Dès que vos comptes développeur existent et que leurs clés sont enregistrées dans les secrets GitHub (liste en tête du workflow), il produit en plus :
+- le `.aab` signé pour Google Play ;
+- l’envoi sur TestFlight pour l’App Store, **sans Mac** grâce aux machines macOS de GitHub ;
+- le paquet `.appx` pour le Microsoft Store.
 
-### Construire les applications (automatique)
-Le workflow `.github/workflows/apps.yml` construit à chaque étiquette `vX.Y.Z` :
-- **Windows / macOS / Linux** : `apps/desktop` (Electron). Ouvre le site en ligne dans sa propre fenêtre et reçoit donc les mises à jour sans réinstaller.
-- **Android** : `apps/mobile` (Capacitor) embarque une copie du site (`scripts/copy-web.mjs`, sans `private/`).
+L’application de bureau ouvre `https://inlights28.github.io/fi-espace/`. Si l’adresse change (compte GitHub renommé, nouveau domaine), modifiez `apps/desktop/main.js` et publiez une nouvelle version. Un nom de domaine personnalisé évite ce problème.
 
-Les fichiers sont joints à une **Release GitHub**. Pour publier une nouvelle version : `git tag v1.0.1 && git push --tags`.
+Les versions de bureau ne sont pas signées : Windows affiche « Informations complémentaires → Exécuter quand même », et macOS demande un clic droit → Ouvrir.
 
-Ces versions ne sont **pas signées**. Windows (SmartScreen) affiche alors « Informations complémentaires → Exécuter quand même », et macOS « clic droit → Ouvrir ».
-
-### Publier sur les stores
-La publication demande **vos** comptes développeur ; je ne peux ni les créer ni payer à votre place.
-
-| Store | Compte | Ce qu’il faut faire |
-|---|---|---|
-| Google Play | Google Play Console (25 $ une fois) | Créer une clé de signature, compiler un `.aab` signé (`./gradlew bundleRelease`), fiche, captures, politique de confidentialité |
-| App Store (iPhone) et Mac App Store | Apple Developer Program (99 $/an) + un Mac avec Xcode | `cd apps/mobile && npm install && npm run ios`, ouvrir `ios/App` dans Xcode, signer, archiver, envoyer |
-| Microsoft Store | Microsoft Partner Center (compte particulier) | Plus simple : [PWABuilder](https://www.pwabuilder.com) avec l’adresse du site génère le paquet MSIX |
-| Linux | Aucun obligatoire | Les fichiers de la Release suffisent ; Flathub et Snap Store sont facultatifs |
-
-Pour signer les versions de bureau (sans avertissement) : un certificat de signature de code Windows et l’Apple Developer Program pour la notarisation macOS.
-
-Apple peut refuser une application qui se contente d’afficher un site (règle 4.2). Pour iPhone, la version **installée depuis Safari** est donc souvent la meilleure option.
-
-Pour les applications, ajouter aux origines autorisées des fonctions serveur : `ALLOWED_ORIGINS=…,https://localhost,capacitor://localhost`.
-
-## Parcours des comptes
-
-- **Invitation** : l’administrateur saisit le nom (les membres existants sont proposés), l’e-mail, les rôles et, pour un membre, sa fiche. La personne reçoit un lien, choisit son mot de passe (10 caractères minimum) et arrive dans son espace.
-- **Connexion** : e-mail + mot de passe ; « Mot de passe oublié » sur l’écran de connexion.
-- **Retrait d’accès** : Administration → Gérer → décocher « Accès actif ».
-- **Plusieurs FI** : un sélecteur apparaît en haut de l’écran.
+### Raccourci « FI espace » sur le Bureau
+Il ouvre la version locale avec les membres réels (`private/donnees-fi.js`). Les modifications restent sur cet ordinateur ; « Recharger depuis le fichier privé » se trouve dans Mon compte. Une fois Supabase en place, la base remplace ce fichier : `private/import-fi.sql` y importe les mêmes données.
 
 ## Données et confidentialité
 
-- Membres : nom court, disponibilité générale, statut, tuteur ; photo uniquement avec accord. Pas de coordonnées ni de notes.
-- Suivis : libellé court et prochaine action, aucun détail personnel ou spirituel.
-- E-mails de rappel : organisation pratique uniquement.
-- À définir avec l’équipe : durée de conservation, sauvegardes, information des personnes concernées.
-
-## Encore à faire
-
-- Créer le projet Supabase et suivre les étapes 1 à 7.
-- Liste des personnes à inviter et rôles de chacun.
-- Facultatif : domaine personnalisé, journal des changements administratifs.
+- Membres : nom court, disponibilité générale, statut, tuteur, et une photo seulement avec l’accord de la personne. Pas de coordonnées ni de notes.
+- Suivis : libellé court et prochaine action, sans détail personnel ni spirituel.
+- Aucune publicité, aucun traçage. Voir [confidentialite.html](confidentialite.html), section « Supprimer mon compte » comprise.

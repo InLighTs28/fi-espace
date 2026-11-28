@@ -1,5 +1,11 @@
 # Construit les applications FI espace et les publie dans une Release GitHub.
-# Déclenchement : pousser une étiquette « v1.0.0 », « v1.1.0 »… (ou lancer à la main depuis l'onglet Actions).
+# Déclenchement : pousser une étiquette « v1.0.2 », « v1.1.0 »… (ou lancer à la main depuis l'onglet Actions).
+#
+# Fonctionne sans aucun compte : installateurs Windows/macOS/Linux, APK Android, vérification iOS.
+# Dès que les secrets ci-dessous existent (Settings → Secrets and variables → Actions), les versions « store » s'ajoutent :
+#   Google Play   : ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD → .aab signé
+#   App Store     : APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64 → envoi automatique sur TestFlight
+#   Microsoft Store : MSSTORE_IDENTITY_NAME, MSSTORE_PUBLISHER, MSSTORE_PUBLISHER_NAME → paquet .appx
 name: Applications
 
 on:
@@ -21,6 +27,11 @@ jobs:
     defaults:
       run:
         working-directory: apps/desktop
+        shell: bash
+    env:
+      MSSTORE_IDENTITY_NAME: ${{ secrets.MSSTORE_IDENTITY_NAME }}
+      MSSTORE_PUBLISHER: ${{ secrets.MSSTORE_PUBLISHER }}
+      MSSTORE_PUBLISHER_NAME: ${{ secrets.MSSTORE_PUBLISHER_NAME }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,11 +41,21 @@ jobs:
       - run: npx electron-builder --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Paquet Microsoft Store (.appx)
+        if: runner.os == 'Windows' && env.MSSTORE_IDENTITY_NAME != ''
+        run: >
+          npx electron-builder --win appx --publish never
+          -c.appx.identityName="$MSSTORE_IDENTITY_NAME"
+          -c.appx.publisher="$MSSTORE_PUBLISHER"
+          -c.appx.publisherDisplayName="$MSSTORE_PUBLISHER_NAME"
+          -c.appx.displayName="FI espace"
+          -c.appx.artifactName='FI-espace-${version}-microsoft-store.${ext}'
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.os }}
           path: |
             apps/desktop/dist/*.exe
+            apps/desktop/dist/*.appx
             apps/desktop/dist/*.dmg
             apps/desktop/dist/*.AppImage
             apps/desktop/dist/*.deb
@@ -46,6 +67,8 @@ jobs:
     defaults:
       run:
         working-directory: apps/mobile
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,22 +80,106 @@ jobs:
           java-version: '17'
       - run: npm install --no-audit --no-fund
       - run: npm run android
-      - name: Compiler l'APK
-        working-directory: apps/mobile/android
-        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
-      - run: |
+      - name: Numéro de version
+        run: |
           VERSION=$(node -p "require('./package.json').version")
-          mkdir -p ../../out && cp android/app/build/outputs/apk/debug/app-debug.apk "../../out/FI-espace-${VERSION}-android.apk"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          sed -i -E "s/versionCode [0-9]+/versionCode ${GITHUB_RUN_NUMBER}/; s/versionName \"[^\"]*\"/versionName \"${VERSION}\"/" android/app/build.gradle
+      - name: Signature Google Play
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          cat >> android/app/build.gradle <<'EOF'
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file(System.getenv("FI_KEYSTORE"))
+                      storePassword System.getenv("FI_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("FI_KEY_ALIAS")
+                      keyPassword System.getenv("FI_KEY_PASSWORD")
+                  }
+              }
+              buildTypes { release { signingConfig signingConfigs.release } }
+          }
+          EOF
+      - name: Compiler
+        working-directory: apps/mobile/android
+        env:
+          FI_KEYSTORE: ${{ runner.temp }}/upload.jks
+          FI_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          FI_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          FI_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          mkdir -p ../../../out
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            ./gradlew assembleRelease bundleRelease --no-daemon
+            cp app/build/outputs/apk/release/app-release.apk "../../../out/FI-espace-${VERSION}-android.apk"
+            cp app/build/outputs/bundle/release/app-release.aab "../../../out/FI-espace-${VERSION}-google-play.aab"
+          else
+            ./gradlew assembleDebug --no-daemon
+            cp app/build/outputs/apk/debug/app-debug.apk "../../../out/FI-espace-${VERSION}-android.apk"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: android
-          path: out/*.apk
+          path: |
+            out/*.apk
+            out/*.aab
           if-no-files-found: error
+
+  ios:
+    name: iPhone / iPad
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - run: npm run ios
+      - name: Vérifier que l'application iOS se compile
+        if: env.ASC_KEY_P8_BASE64 == ''
+        run: >
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug
+          -sdk iphonesimulator -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO build | tail -n 20
+      - name: Construire et envoyer sur TestFlight
+        if: env.ASC_KEY_P8_BASE64 != ''
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          KEY="$RUNNER_TEMP/AuthKey.p8"
+          echo "$ASC_KEY_P8_BASE64" | base64 -d > "$KEY"
+          AUTH="-allowProvisioningUpdates -authenticationKeyPath $KEY -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID"
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" archive \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" MARKETING_VERSION="$VERSION" $AUTH | tail -n 30
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" $AUTH | tail -n 30
 
   release:
     name: Publier la Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [desktop, android]
+    needs: [desktop, android, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -89,4 +196,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" files/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "FI espace $GITHUB_REF_NAME" \
-            --notes "Applications FI espace. Windows : .exe · macOS : .dmg · Linux : .AppImage / .deb · Android : .apk. Versions non signées : Windows et macOS afficheront un avertissement à la première ouverture (voir le README, section Applications)."
+            --notes "Applications FI espace. Windows : .exe · macOS : .dmg · Linux : .AppImage / .deb · Android : .apk. Le plus simple pour tous : ouvrir https://inlights28.github.io/fi-espace/ puis « Installer » (ordinateur, Android) ou « Sur l'écran d'accueil » (iPhone)."
